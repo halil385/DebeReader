@@ -1,0 +1,106 @@
+const express = require('express');
+const puppeteer = require('puppeteer');
+const cors = require('cors');
+const sqlite3 = require('sqlite3').verbose(); // SQLite kütüphanesini ekledik
+
+// Veritabanı dosyasını başlat veya bağlan
+const db = new sqlite3.Database('./debe.db', (err) => {
+    if (err) {
+        console.error("Veritabanı bağlantı hatası:", err.message);
+    } else {
+        console.log("SQLite veritabanına başarıyla bağlanıldı.");
+    }
+});
+
+// Sunucu ilk çalıştığında çalışacak olan tablo oluşturma komutu
+db.serialize(() => {
+    db.run(`CREATE TABLE IF NOT EXISTS debes (
+        date TEXT PRIMARY KEY,
+        content TEXT NOT NULL,
+        createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )`, (err) => {
+        if (err) {
+            console.error("Tablo oluşturma hatası:", err.message);
+        } else {
+            console.log("'debes' tablosu başarıyla oluşturuldu veya zaten mevcuttu.");
+        }
+    });
+});
+
+
+const app = express();
+const PORT = 3000;
+app.use(cors());
+
+// YENİDEN YAZILAN API ROTASI
+app.get('/api/debe', async (req, res) => {
+    // Bugünün tarihini YYYY-MM-DD formatında al
+    const today = new Date().toISOString().split('T')[0];
+
+    // 1. VERİTABANINI KONTROL ET
+    const sql = `SELECT content FROM debes WHERE date = ?`;
+    db.get(sql, [today], async (err, row) => {
+        if (err) {
+            return res.status(500).json({ error: "Veritabanı okuma hatası: " + err.message });
+        }
+
+        // 2. VERİ VARSA, VERİTABANINDAN GÖNDER
+        if (row) {
+            console.log(`Veri bulundu (${today}). Veritabanından sunuluyor...`);
+            // Veritabanındaki metin halindeki JSON'u parse edip gönder
+            return res.json(JSON.parse(row.content));
+        }
+
+        // 3. VERİ YOKSA, PUPPETEER İLE ÇEK
+        console.log(`Veri bulunamadı (${today}). Ekşi Sözlük'ten çekiliyor...`);
+        let browser = null;
+        try {
+            browser = await puppeteer.launch({ headless: true, args: ['--no-sandbox'] });
+            const page = await browser.newPage();
+            await page.setViewport({ width: 1920, height: 1080 });
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
+
+            await page.goto('https://eksisozluk.com/debe', { waitUntil: 'networkidle2' });
+            
+            const entryLinks = await page.evaluate(() => {
+                const items = [];
+                document.querySelectorAll('ul.topic-list li a').forEach(el => items.push({ title: el.innerText.trim(), link: el.href }));
+                return items;
+            });
+
+            const finalDebeList = [];
+            for (const entry of entryLinks) {
+                await page.goto(entry.link, { waitUntil: 'networkidle2' });
+                const entryContent = await page.evaluate(() => document.querySelector('div.content')?.innerHTML.trim() || "İçerik bulunamadı.");
+                finalDebeList.push({ ...entry, content: entryContent });
+            }
+
+            // 4. ÇEKİLEN YENİ VERİYİ VERİTABANINA KAYDET
+            const insertSql = `INSERT INTO debes (date, content) VALUES (?, ?)`;
+            // finalDebeList dizisini veritabanına kaydetmek için metne (string) çeviriyoruz
+            const contentString = JSON.stringify(finalDebeList);
+
+            db.run(insertSql, [today, contentString], (insertErr) => {
+                if (insertErr) {
+                    console.error("Yeni veriyi veritabanına kaydetme hatası:", insertErr.message);
+                } else {
+                    console.log(`Yeni veri (${today}) başarıyla veritabanına kaydedildi.`);
+                }
+            });
+
+            // 5. YENİ ÇEKİLEN VERİYİ KULLANICIYA GÖNDER
+            res.json(finalDebeList);
+
+        } catch (error) {
+            console.error("Puppeteer hatası:", error);
+            res.status(500).json({ error: 'Veriler Puppeteer ile çekilirken bir hata oluştu.' });
+        } finally {
+            if (browser) await browser.close();
+        }
+    });
+});
+
+
+app.listen(PORT, () => {
+    console.log(`Sunucu http://localhost:${PORT} adresinde çalışıyor.`);
+});

@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="tr" data-bs-theme="dark">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ekşi Sözlük - Debe Okuyucu</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet"
+        xintegrity="sha384-QWTKZyjpPEjISv5WaRU9OFeRpok6YctnYmDr5pNlyT2bRjXh0JMhjY6hW+ALEwIH" crossorigin="anonymous">
+    <style>
+        /* Sayfa için genel stil ayarları */
+        body {
+            background-color: #212529;
+            color: #f8f9fa;
+        }
+
+        .container {
+            max-width: 960px;
+        }
+
+        .header {
+            border-bottom: 2px solid #495057;
+            padding-bottom: 1rem;
+            margin-bottom: 2rem;
+        }
+
+        /* Akordeon başlıklarının stilini özelleştirme */
+        .accordion-button {
+            font-weight: 500;
+        }
+
+        .accordion-button:not(.collapsed) {
+            background-color: #343a40;
+            color: #f8f9fa;
+        }
+        
+        /* Akordeon içeriğinin stilini özelleştirme */
+        .accordion-body {
+            font-size: 1rem;
+            line-height: 1.6;
+            background-color: #2b3035;
+        }
+        
+        /* Ekşi Sözlük'ten gelen linklerin stili */
+        .accordion-body a {
+            color: #729fcf;
+            text-decoration: none;
+        }
+        .accordion-body a:hover {
+            text-decoration: underline;
+        }
+        
+        /* Yükleme animasyonu */
+        .loader {
+            text-align: center;
+            padding: 50px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container py-4">
+        <!-- Sayfa Başlığı -->
+        <header class="header text-center">
+            <h1 class="display-5">Ekşi Sözlük Debe Okuyucu</h1>
+            <p class="lead text-muted">Dünün en beğenilen entry'leri</p>
+        </header>
+
+        <!-- Akordeon listesi buraya yüklenecek -->
+        <main id="debe-container">
+            <!-- Başlangıçta gösterilecek yükleme animasyonu -->
+            <div class="loader">
+                <div class="spinner-border text-light" role="status">
+                    <span class="visually-hidden">Yükleniyor...</span>
+                </div>
+                <p class="mt-3">Debe listesi yükleniyor, lütfen bekleyin...</p>
+            </div>
+        </main>
+        
+        <footer class="text-center text-muted mt-5">
+            <p>&copy; 2024 - API ve Arayüz</p>
+        </footer>
+
+    </div>
+
+    <!-- Bootstrap JS (Accordion bileşeninin çalışması için gerekli) -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"
+        xintegrity="sha384-YvpcrYf0tY3lHB60NNkmXc5s9fDVZLESaAA55NDzOxhy9GkcIdslK1eN7N6jIeHz"
+        crossorigin="anonymous"></script>
+
+    <script>
+        // Sayfa tamamen yüklendiğinde bu script çalışacak
+        document.addEventListener('DOMContentLoaded', () => {
+            const container = document.getElementById('debe-container');
+            // API sunucumuzun adresi
+            const apiUrl = 'http://localhost:3000/api/debe';
+
+            // API'den verileri çekmek için fetch fonksiyonunu kullanıyoruz
+            fetch(apiUrl)
+                .then(response => {
+                    // Cevap başarılı değilse hata fırlat
+                    if (!response.ok) {
+                        throw new Error(`HTTP hatası! Status: ${response.status}`);
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    // Veri başarıyla geldiyse yükleme animasyonunu temizle
+                    container.innerHTML = '';
+
+                    // Eğer veri boşsa veya hata mesajı içeriyorsa kullanıcıyı bilgilendir
+                    if (!data || data.length === 0 || data.error) {
+                         container.innerHTML = `
+                            <div class="alert alert-danger" role="alert">
+                                <strong>Hata!</strong> Debe listesi yüklenemedi. Lütfen backend sunucusunun çalıştığından emin olun.
+                            </div>`;
+                        return;
+                    }
+                    
+                    // Ana akordeon container'ını oluştur
+                    const accordionContainer = document.createElement('div');
+                    accordionContainer.className = 'accordion';
+                    accordionContainer.id = 'debeAccordion';
+
+                    // Gelen her bir entry için bir akordeon elemanı oluştur
+                    data.forEach((entry, index) => {
+                        const accordionItem = `
+                            <div class="accordion-item">
+                                <h2 class="accordion-header" id="heading-${index}">
+                                    <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#collapse-${index}" aria-expanded="false" aria-controls="collapse-${index}">
+                                        ${index + 1}. ${entry.title}
+                                    </button>
+                                </h2>
+                                <div id="collapse-${index}" class="accordion-collapse collapse" aria-labelledby="heading-${index}" data-bs-parent="#debeAccordion">
+                                    <div class="accordion-body">
+                                        ${entry.content}
+                                        <hr>
+                                        <a href="${entry.link}" target="_blank" class="btn btn-sm btn-outline-light mt-2">Entry'e git</a>
+                                    </div>
+                                </div>
+                            </div>
+                        `;
+                        // Oluşturulan HTML'i ana container'a ekle
+                        accordionContainer.innerHTML += accordionItem;
+                    });
+                    
+                    // Tamamlanmış akordeon yapısını sayfaya ekle
+                    container.appendChild(accordionContainer);
+                })
+                .catch(error => {
+                    // fetch sırasında bir hata oluşursa kullanıcıyı bilgilendir
+                    console.error('Veri çekme hatası:', error);
+                    container.innerHTML = `
+                        <div class="alert alert-danger" role="alert">
+                            <strong>Bağlantı Hatası!</strong> Backend sunucusuna ulaşılamıyor. Lütfen API'nin çalıştığından ve doğru adreste olduğundan emin olun.
+                            <br>
+                            <small>${error.message}</small>
+                        </div>
+                    `;
+                });
+        });
+    </script>
+</body>
+</html>
