@@ -4,15 +4,14 @@ const cors = require('cors');
 // 'pg' kütüphanesinden 'Pool' sınıfını import ediyoruz
 const { Pool } = require('pg');
 
-// --- VERİTABANI BAĞLANTI AYARLARI ---
-// Bu bilgileri kendi yerel PostgreSQL kurulumuna göre doldurmalısın.
-// Render.com'a deploy ettiğinde, bu bilgiler Render'ın sağladığı environment variables'dan gelecek.
+// ORTAM DEĞİŞKENLERİNE GÖRE BAĞLANTI KURULUMU
+// Render'da DATABASE_URL değişkeni otomatik olarak sağlanır.
+// Eğer bu değişken yoksa (yani yerelde çalışıyorsak), yerel ayarları kullanır.
+const isProduction = process.env.NODE_ENV === 'production';
+
 const pool = new Pool({
-    user: 'postgres',      // PostgreSQL kullanıcı adın
-    host: 'localhost',
-    database: 'debe_reader',    // Oluşturduğun veritabanının adı
-    password: 'Psw1800S6!',  // PostgreSQL şifren
-    port: 5432,
+    connectionString: process.env.DATABASE_URL || 'postgresql://postgres:Psw1800S6!@localhost:5432/debe_reader',
+    ssl: isProduction ? { rejectUnauthorized: false } : false
 });
 // Veritabanı bağlantısını test etme ve tabloyu oluşturma
 const setupDatabase = async () => {
