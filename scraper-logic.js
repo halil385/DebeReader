@@ -1,29 +1,33 @@
 // scraper-logic.js
-const { Pool } = require('pg');
-const puppeteer = require('puppeteer');
+const chromium = require('@sparticuz/chromium');
+const puppeteer = require('puppeteer-core');
 
 const scrapeAndSave = async () => {
     console.log("Kazıma işlemi başlıyor...");
+    // Veritabanı bağlantısını bu fonksiyon içinde kurup kapatmak daha güvenli.
+    const { Pool } = require('pg');
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: { rejectUnauthorized: false },
     });
+    
     let browser = null;
     try {
-        browser = await puppeteer.launch({ 
-            headless: true, 
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-dev-shm-usage',
-                '--single-process'
-            ] 
+        console.log("Chromium başlatılıyor...");
+        // YENİ BAŞLATMA KODU: @sparticuz/chromium'un ayarlarını kullanıyoruz.
+        browser = await puppeteer.launch({
+            args: chromium.args,
+            defaultViewport: chromium.defaultViewport,
+            executablePath: await chromium.executablePath(),
+            headless: chromium.headless,
         });
+
         const page = await browser.newPage();
         await page.setViewport({ width: 1920, height: 1080 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
 
-        await page.goto('https://eksisozluk.com/debe', { waitUntil: 'networkidle2', timeout: 120000 });
+        console.log("Ekşi Sözlük'e gidiliyor...");
+        await page.goto('[https://eksisozluk.com/debe](https://eksisozluk.com/debe)', { waitUntil: 'networkidle2', timeout: 120000 });
         
         const entryLinks = await page.evaluate(() => {
             const items = [];
@@ -53,9 +57,12 @@ const scrapeAndSave = async () => {
         console.error("Kazıma sırasında hata oluştu:", error);
         return { success: false, message: "Kazıma sırasında bir hata oluştu." };
     } finally {
-        if (browser) await browser.close();
+        if (browser) {
+            await browser.close();
+            console.log("Tarayıcı kapatıldı.");
+        }
         await pool.end();
-        console.log("Kazıma işlemi ve veritabanı bağlantısı sonlandırıldı.");
+        console.log("Veritabanı bağlantısı sonlandırıldı.");
     }
 };
 
