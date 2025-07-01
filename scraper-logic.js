@@ -1,8 +1,10 @@
 // scraper-logic.js
-const chromium = require('@sparticuz/chromium');
-const puppeteer = require('puppeteer-core');
 
 const scrapeAndSave = async () => {
+    // Dinamik import ile modern kütüphaneleri çağırıyoruz
+    const chromium = (await import('@sparticuz/chromium')).default;
+    const puppeteer = (await import('puppeteer-core')).default;
+
     console.log("Kazıma işlemi başlıyor...");
     // Veritabanı bağlantısını bu fonksiyon içinde kurup kapatmak daha güvenli.
     const { Pool } = require('pg');
@@ -27,7 +29,8 @@ const scrapeAndSave = async () => {
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
 
         console.log("Ekşi Sözlük'e gidiliyor...");
-        await page.goto('[https://eksisozluk.com/debe](https://eksisozluk.com/debe)', { waitUntil: 'networkidle2', timeout: 120000 });
+        // Hatalı URL formatı düzeltildi.
+        await page.goto('https://eksisozluk.com/debe', { waitUntil: 'networkidle2', timeout: 120000 });
         
         const entryLinks = await page.evaluate(() => {
             const items = [];
