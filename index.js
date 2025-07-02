@@ -60,3 +60,31 @@ app.get('/api/scrape', async (req, res) => {
 app.listen(PORT, () => {
     console.log(`Sunucu ${PORT} portunda çalışıyor.`);
 });
+
+
+// bu geçmişi silmek için Gizli Yol 
+app.get('/api/delete-record', async (req, res) => {
+    if (req.query.secret !== 'xelle') { // Anahtarınızı değiştirin
+        return res.status(401).send('Yetkiniz yok.');
+    }
+    const targetDate = req.query.date;
+    if (!targetDate) {
+        return res.status(400).send('Lütfen silmek için bir "date" parametresi belirtin.');
+    }
+
+    try {
+        const sql = `DELETE FROM debes WHERE date = $1`;
+        const result = await pool.query(sql, [targetDate]);
+        
+        if (result.rowCount > 0) {
+            console.log(`${targetDate} tarihli kayıt başarıyla silindi.`);
+            res.status(200).send(`${targetDate} tarihli kayıt başarıyla silindi.`);
+        } else {
+            console.log(`${targetDate} tarihli silinecek kayıt bulunamadı.`);
+            res.status(404).send(`${targetDate} tarihli silinecek kayıt bulunamadı.`);
+        }
+    } catch (error) {
+        console.error("Kayıt silme hatası:", error);
+        res.status(500).send("Kayıt silinirken bir hata oluştu.");
+    }
+});
