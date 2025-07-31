@@ -7,6 +7,7 @@ const { scrapeAndSave } = require('./scraper-logic.js'); // Yeni fonksiyonu impo
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
+    family: 4, // IPv4 kullanımı
 });
 
 const app = express();
