@@ -1,23 +1,28 @@
 // scraper-logic.js
+const chromium = (await import('@sparticuz/chromium')).default;
+const puppeteer = (await import('puppeteer-core')).default;
 
-const scrapeAndSave = async () => {
-    // Dinamik import ile modern kütüphaneleri çağırıyoruz
-    const chromium = (await import('@sparticuz/chromium')).default;
-    const puppeteer = (await import('puppeteer-core')).default;
-
-    console.log("Kazıma işlemi başlıyor...");
-    // Veritabanı bağlantısını bu fonksiyon içinde kurup kapatmak daha güvenli.
+const scrapeAndSave = async (targetDate) => {
+    console.log(`Kazıma işlemi başlıyor: ${targetDate}`);
     const { Pool } = require('pg');
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: { rejectUnauthorized: false },
-        family: 4, // IPv4 kullanımı
+        family: 4,
     });
     
     let browser = null;
     try {
-        console.log("Chromium başlatılıyor...");
-        // YENİ BAŞLATMA KODU: @sparticuz/chromium'un ayarlarını kullanıyoruz.
+        // YENİ ADIM: Kazımadan önce tablonun var olduğundan emin ol
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS debes (
+                date DATE PRIMARY KEY,
+                content JSONB NOT NULL,
+                createdAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        console.log("'debes' tablosu kazıyıcı tarafından kontrol edildi/oluşturuldu.");
+
         browser = await puppeteer.launch({
             args: chromium.args,
             defaultViewport: chromium.defaultViewport,
@@ -29,8 +34,6 @@ const scrapeAndSave = async () => {
         await page.setViewport({ width: 1920, height: 1080 });
         await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
 
-        console.log("Ekşi Sözlük'e gidiliyor...");
-        // Hatalı URL formatı düzeltildi.
         await page.goto('https://eksisozluk.com/debe', { waitUntil: 'networkidle2', timeout: 120000 });
         
         const entryLinks = await page.evaluate(() => {
@@ -47,26 +50,22 @@ const scrapeAndSave = async () => {
             finalDebeList.push({ ...entry, content: entryContent });
         }
 
-        const today = new Date().toISOString().split('T')[0];
         const insertSql = `
             INSERT INTO debes (date, content) VALUES ($1, $2)
             ON CONFLICT (date) DO UPDATE SET content = EXCLUDED.content;
         `;
         const contentString = JSON.stringify(finalDebeList);
-        await pool.query(insertSql, [today, contentString]);
+        await pool.query(insertSql, [targetDate, contentString]);
         
-        console.log(`Yeni veri (${today}) başarıyla veritabanına kaydedildi.`);
+        console.log(`Yeni veri (${targetDate}) başarıyla veritabanına kaydedildi.`);
         return { success: true, message: `Başarıyla ${finalDebeList.length} entry kaydedildi.` };
     } catch (error) {
         console.error("Kazıma sırasında hata oluştu:", error);
         return { success: false, message: "Kazıma sırasında bir hata oluştu." };
     } finally {
-        if (browser) {
-            await browser.close();
-            console.log("Tarayıcı kapatıldı.");
-        }
+        if (browser) await browser.close();
         await pool.end();
-        console.log("Veritabanı bağlantısı sonlandırıldı.");
+        console.log("Kazıma işlemi ve veritabanı bağlantısı sonlandırıldı.");
     }
 };
 

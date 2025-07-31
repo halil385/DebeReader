@@ -2,19 +2,19 @@
 const express = require('express');
 const cors = require('cors');
 const { Pool } = require('pg');
-const { scrapeAndSave } = require('./scraper-logic.js'); // Yeni fonksiyonu import et
+const { scrapeAndSave } = require('./scraper-logic.js');
 
 const pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
-    family: 4, // IPv4 kullanımı
+    family: 4,
 });
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 app.use(cors());
 
-// SADECE VERİTABANINDAN OKUMA YAPAN API
+// --- STANDART ROTALAR ---
 app.get('/api/debe', async (req, res) => {
     const requestedDate = req.query.date || new Date().toISOString().split('T')[0];
     try {
@@ -43,29 +43,28 @@ app.get('/api/dates', async (req, res) => {
     }
 });
 
-// YENİ GİZLİ TETİKLEYİCİ ROTA
+
+// --- YÖNETİM ROTALARI ---
+
+// GİZLİ TETİKLEYİCİ ROTA
 app.get('/api/scrape', async (req, res) => {
-    // Basit bir güvenlik önlemi. Bu anahtarı daha karmaşık yapabilirsin.
-    if (req.query.secret !== 'halil') {
+    // Güvenlik anahtarını kendinize göre değiştirin
+    if (req.query.secret !== 'halil') { 
         return res.status(401).send('Yetkiniz yok.');
     }
-
-    // İsteği hemen yanıtla, kazıma işlemini arka planda başlat.
-    res.status(202).send('Kazıma işlemi kabul edildi ve arka planda başlatıldı.');
+    // Eğer bir tarih belirtilmişse onu, belirtilmemişse bugünü kazı.
+    const targetDate = req.query.date || new Date().toISOString().split('T')[0];
     
-    // Kazıma işlemini beklemeden çalıştır.
-    console.log("Gizli rota üzerinden kazıma tetiklendi...");
-    scrapeAndSave();
+    res.status(202).send(`Kazıma işlemi ${targetDate} tarihi için kabul edildi ve arka planda başlatıldı.`);
+    
+    console.log(`Gizli rota üzerinden kazıma tetiklendi: ${targetDate}`);
+    scrapeAndSave(targetDate);
 });
 
-app.listen(PORT, () => {
-    console.log(`Sunucu ${PORT} portunda çalışıyor.`);
-});
-
-
-// bu geçmişi silmek için Gizli Yol 
+// GİZLİ KAYIT SİLME ROTASI
 app.get('/api/delete-record', async (req, res) => {
-    if (req.query.secret !== 'xelle') { // Anahtarınızı değiştirin
+    // Güvenlik anahtarını kendinize göre değiştirin
+    if (req.query.secret !== 'xelle') {
         return res.status(401).send('Yetkiniz yok.');
     }
     const targetDate = req.query.date;
@@ -89,3 +88,28 @@ app.get('/api/delete-record', async (req, res) => {
         res.status(500).send("Kayıt silinirken bir hata oluştu.");
     }
 });
+
+
+// Sunucuyu başlatmak için asenkron bir fonksiyon
+const startServer = async () => {
+    try {
+        // Sunucu başlamadan önce tablonun var olduğundan emin ol
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS debes (
+                date DATE PRIMARY KEY,
+                content JSONB NOT NULL,
+                createdAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+        console.log("'debes' tablosu API sunucusu tarafından kontrol edildi/oluşturuldu.");
+
+        app.listen(PORT, () => {
+            console.log(`Sunucu ${PORT} portunda çalışıyor.`);
+        });
+    } catch (error) {
+        console.error("Sunucu başlatılırken veritabanı hatası oluştu:", error);
+        process.exit(1); // Veritabanı yoksa sunucu başlamasın
+    }
+};
+
+startServer();
