@@ -1,19 +1,21 @@
 // scraper-logic.js
-const chromium = (await import('@sparticuz/chromium')).default;
-const puppeteer = (await import('puppeteer-core')).default;
 
 const scrapeAndSave = async (targetDate) => {
+    // DİNAMİK IMPORT'LARI ASYNC FONKSİYONUN İÇİNE TAŞIDIK
+    const chromium = (await import('@sparticuz/chromium')).default;
+    const puppeteer = (await import('puppeteer-core')).default;
+
     console.log(`Kazıma işlemi başlıyor: ${targetDate}`);
     const { Pool } = require('pg');
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: { rejectUnauthorized: false },
-        family: 4,
+        family: 4, // IPv4 bağlantısını garantilemek için
     });
     
     let browser = null;
     try {
-        // YENİ ADIM: Kazımadan önce tablonun var olduğundan emin ol
+        // Kazımadan önce tablonun var olduğundan emin ol
         await pool.query(`
             CREATE TABLE IF NOT EXISTS debes (
                 date DATE PRIMARY KEY,
