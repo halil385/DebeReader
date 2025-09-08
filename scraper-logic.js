@@ -48,7 +48,7 @@ const scrapeAndSave = async (targetDate) => {
         for (const entry of entryLinks) {
             console.log(`İçerik çekiliyor: ${entry.title}`);
             await page.goto(entry.link, { waitUntil: 'networkidle2', timeout: 120000 });
-            const entryContent = await page.evaluate(() => document.querySelector('div.content')?.innerHTML.trim() || "İçerik bulunamadı.");
+            const entryContent = await page.evaluate(() => document.querySelector('div#index-section')?.innerHTML.trim() || "İçerik bulunamadı.");
             finalDebeList.push({ ...entry, content: entryContent });
         }
 
