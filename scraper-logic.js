@@ -1,5 +1,3 @@
-// scraper-logic.js
-require('dotenv').config();
 
 // Rastgele bir süre beklemek için yardımcı bir fonksiyon
 const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
