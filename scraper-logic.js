@@ -102,7 +102,7 @@ const scrapeAndSave = async (targetDate) => {
         return { success: true, message: `İşlem tamamlandı. Başarıyla ${finalDebeList.length} entry işlendi.` };
     } catch (error) {
         console.error("Kazıma sırasında genel bir hata oluştu:", error);
-        return { false, message: "Kazıma sırasında genel bir hata oluştu." };
+        return { success: false, message: "Kazıma sırasında genel bir hata oluştu." };
     } finally {
         await pool.end();
         console.log("Kazıma işlemi ve veritabanı bağlantısı sonlandırıldı.");
