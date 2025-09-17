@@ -1,4 +1,6 @@
 // scraper-logic.js
+const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
+
 const scrapeAndSave = async (targetDate) => {
     // DİNAMİK IMPORT'LARI ASYNC FONKSİYONUN İÇİNE TAŞIDIK
     const chromium = (await import('@sparticuz/chromium')).default;
@@ -76,12 +78,20 @@ const scrapeAndSave = async (targetDate) => {
             try {
                 const page = await batchBrowser.newPage();
                 for (const entry of batch) {
-                    console.log(`İçerik çekiliyor: ${entry.title}`);
-                    await page.goto(entry.link, { waitUntil: 'networkidle2', timeout: 120000 });
-                    
-                    // SENİN GÜNCELLEDİĞİN SEÇİCİYİ KULLANIYORUZ
-                    const entryContent = await page.evaluate(() => document.querySelector('div.content')?.innerHTML.trim() || "İçerik bulunamadı.");
-                    finalDebeList.push({ ...entry, content: entryContent });
+                    try {
+                        // HER İSTEK ARASINA RASTGELE BİR GECİKME EKLE (1-3 saniye)
+                        await delay(Math.random() * 2000 + 1000); 
+                        
+                        console.log(`İçerik çekiliyor: ${entry.title}`);
+                        await page.goto(entry.link, { waitUntil: 'networkidle2', timeout: 120000 });
+                        
+                        const entryContent = await page.evaluate(() => document.querySelector('div.content')?.innerHTML.trim() || "İçerik bulunamadı.");
+                        finalDebeList.push({ ...entry, content: entryContent });
+
+                    } catch (singleError) {
+                        // TEK BİR SAYFA HATA VERİRSE, BUNU KAYDET VE ÇÖKMEDEN DEVAM ET
+                        console.error(`HATA: '${entry.title}' başlıklı entry çekilemedi. Hata: ${singleError.message}`);
+                    }
                 }
             } finally {
                 if (batchBrowser) await batchBrowser.close();
@@ -89,15 +99,20 @@ const scrapeAndSave = async (targetDate) => {
             }
         }
 
-        const insertSql = `
-            INSERT INTO debes (date, content) VALUES ($1, $2)
-            ON CONFLICT (date) DO UPDATE SET content = EXCLUDED.content;
-        `;
-        const contentString = JSON.stringify(finalDebeList);
-        await pool.query(insertSql, [targetDate, contentString]);
-        
-        console.log(`Yeni veri (${targetDate}) başarıyla veritabanına kaydedildi.`);
-        return { success: true, message: `Başarıyla ${finalDebeList.length} entry kaydedildi.` };
+        // Sadece başarılı bir şekilde çekilen verileri kaydet
+        if (finalDebeList.length > 0) {
+            const insertSql = `
+                INSERT INTO debes (date, content) VALUES ($1, $2)
+                ON CONFLICT (date) DO UPDATE SET content = EXCLUDED.content;
+            `;
+            const contentString = JSON.stringify(finalDebeList);
+            await pool.query(insertSql, [targetDate, contentString]);
+            console.log(`Yeni veri (${targetDate}) başarıyla veritabanına kaydedildi. Toplam ${finalDebeList.length} entry işlendi.`);
+        } else {
+            console.warn("Hiçbir entry başarıyla çekilemedi, veritabanına kayıt yapılmadı.");
+        }
+
+        return { success: true, message: `İşlem tamamlandı. Başarıyla ${finalDebeList.length} entry işlendi.` };
     } catch (error) {
         console.error("Kazıma sırasında hata oluştu:", error);
         return { success: false, message: "Kazıma sırasında bir hata oluştu." };
