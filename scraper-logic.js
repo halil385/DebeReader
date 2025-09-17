@@ -10,14 +10,12 @@ const scrapeAndSave = async (targetDate) => {
     const { Pool } = require('pg');
     const isProduction = process.env.NODE_ENV === 'production';
     
-    // Lokal ve canlı ortamlar için esnek veritabanı bağlantısı
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: isProduction ? { rejectUnauthorized: false } : false,
-        family: 4 // IPv4 kullanımı için
+        family: 4, // IPv4 kullan   
     });
 
-    // Tarayıcıyı her seferinde aynı seçeneklerle başlatmak için bir fonksiyon
     const launchBrowser = async () => {
         return puppeteer.launch({
             args: chromium.args,
@@ -42,7 +40,6 @@ const scrapeAndSave = async (targetDate) => {
         let initialBrowser = await launchBrowser();
         try {
             const page = await initialBrowser.newPage();
-            // Sayfa yükleme süresini artırarak timeout hatalarını azaltıyoruz
             await page.goto('https://eksisozluk.com/debe', { waitUntil: 'networkidle2', timeout: 120000 });
             entryLinks = await page.evaluate(() => 
                 Array.from(document.querySelectorAll('ul.topic-list li a')).map(el => ({
@@ -56,35 +53,49 @@ const scrapeAndSave = async (targetDate) => {
 
         console.log(`Başarıyla ${entryLinks.length} adet link bulundu. İçerikler tek tek çekilecek...`);
 
-        // --- NİHAİ ÇÖZÜM: HER BİR ENTRY İÇİN TARAYICIYI YENİDEN BAŞLAT ---
+        // --- NİHAİ ÇÖZÜM: HER BİR ENTRY İÇİN YENİDEN DENEME MANTIĞIYLA ÇALIŞ ---
         const finalDebeList = [];
+        const MAX_RETRIES = 2; // Her sayfa için toplam 3 deneme (1 asıl + 2 tekrar)
+
         for (let i = 0; i < entryLinks.length; i++) {
             const entry = entryLinks[i];
             console.log(`--- Entry ${i + 1}/${entryLinks.length} işleniyor: ${entry.title} ---`);
             
-            let browser = null;
-            try {
-                // Her istek arasına küçük bir gecikme ekleyerek engellenme riskini azalt
-                await delay(Math.random() * 1500 + 500); // 0.5 - 2 saniye arası bekle
-                
-                browser = await launchBrowser();
-                const page = await browser.newPage();
-                
-                await page.goto(entry.link, { waitUntil: 'networkidle2', timeout: 120000 });
-                
-                const entryContent = await page.evaluate(() => document.querySelector('div.content')?.innerHTML.trim() || "İçerik bulunamadı.");
-                finalDebeList.push({ ...entry, content: entryContent });
-                
-                console.log(`'${entry.title}' başarıyla çekildi.`);
+            let success = false;
+            for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+                let browser = null;
+                try {
+                    // Her deneme arasına küçük bir gecikme ekle
+                    if (attempt > 1) {
+                         const retryDelay = 2000 * attempt; // Her denemede daha uzun bekle
+                         console.log(`${retryDelay / 1000} saniye sonra tekrar denenecek... (deneme ${attempt})`);
+                         await delay(retryDelay);
+                    } else {
+                         await delay(Math.random() * 1500 + 500); // Normal bekleme
+                    }
+                    
+                    browser = await launchBrowser();
+                    const page = await browser.newPage();
+                    
+                    await page.goto(entry.link, { waitUntil: 'networkidle2', timeout: 120000 });
+                    
+                    const entryContent = await page.evaluate(() => document.querySelector('div.content')?.innerHTML.trim() || "İçerik bulunamadı.");
+                    finalDebeList.push({ ...entry, content: entryContent });
+                    
+                    console.log(`'${entry.title}' başarıyla çekildi.`);
+                    success = true;
+                    break; // Başarılı olunca yeniden deneme döngüsünden çık
 
-            } catch (singleError) {
-                // Tek bir sayfa hata verirse, logla ve çökmeden devam et
-                console.error(`HATA: '${entry.title}' başlıklı entry çekilemedi. Hata: ${singleError.message}`);
-            } finally {
-                // Her işlemden sonra tarayıcıyı mutlaka kapat
-                if (browser) await browser.close();
-                console.log(`--- Tarayıcı kapatıldı ---`);
+                } catch (singleError) {
+                    console.error(`HATA (deneme ${attempt}): '${entry.title}' çekilemedi. Hata: ${singleError.message}`);
+                    if (attempt === MAX_RETRIES + 1) {
+                        console.error(`'${entry.title}' için tüm denemeler başarısız oldu. Bu entry atlanıyor.`);
+                    }
+                } finally {
+                    if (browser) await browser.close();
+                }
             }
+             console.log(`--- Entry ${i + 1} tamamlandı ---`);
         }
 
         if (finalDebeList.length > 0) {
@@ -110,4 +121,3 @@ const scrapeAndSave = async (targetDate) => {
 };
 
 module.exports = { scrapeAndSave };
-
