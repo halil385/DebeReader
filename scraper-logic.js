@@ -1,123 +1,127 @@
-// Rastgele bir süre beklemek için yardımcı bir fonksiyon
-const delay = (ms) => new Promise(resolve => setTimeout(resolve, ms));
 
-const scrapeAndSave = async (targetDate) => {
-    // Dinamik import'ları fonksiyonun içine taşıdık
+const BATCH_SIZE = 15; // Her tetiklendiğinde işlenecek içerik sayısı
+
+// Tarayıcıyı başlatmak için bir yardımcı fonksiyon
+const launchBrowser = async () => {
     const chromium = (await import('@sparticuz/chromium')).default;
     const puppeteer = (await import('puppeteer-core')).default;
+    return puppeteer.launch({
+        args: chromium.args,
+        defaultViewport: chromium.defaultViewport,
+        executablePath: await chromium.executablePath(),
+        headless: chromium.headless,
+        family: 4,  // IPv4 kullan
+    });
+};
 
-    console.log(`Kazıma işlemi başlıyor: ${targetDate}`);
+// Faz 1: Sadece linkleri çeker ve veritabanına boş kayıtlar olarak ekler
+const scrapeLinks = async () => {
+    console.log("Faz 1: Link kazıma işlemi başlıyor...");
     const { Pool } = require('pg');
     const isProduction = process.env.NODE_ENV === 'production';
-    
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: isProduction ? { rejectUnauthorized: false } : false,
-        family: 4, // IPv4 kullan   
     });
 
-    const launchBrowser = async () => {
-        return puppeteer.launch({
-            args: chromium.args,
-            defaultViewport: chromium.defaultViewport,
-            executablePath: await chromium.executablePath(),
-            headless: chromium.headless,
-        });
-    }
-
+    let browser = null;
     try {
-        await pool.query(`
-            CREATE TABLE IF NOT EXISTS debes (
-                date DATE PRIMARY KEY,
-                content JSONB NOT NULL,
-                createdAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-            )
-        `);
-        console.log("'debes' tablosu kazıyıcı tarafından kontrol edildi/oluşturuldu.");
+        browser = await launchBrowser();
+        const page = await browser.newPage();
+        await page.goto('https://eksisozluk.com/debe', { waitUntil: 'networkidle2', timeout: 120000 });
+        const entryLinks = await page.evaluate(() =>
+            Array.from(document.querySelectorAll('ul.topic-list li a')).map((el, index) => ({
+                title: el.innerText.trim(),
+                link: el.href,
+                order: index + 1
+            }))
+        );
 
-        // --- İLK AŞAMA: Sadece linkleri çekmek için tarayıcıyı bir kez kullan ---
-        let entryLinks = [];
-        let initialBrowser = await launchBrowser();
+        if (entryLinks.length === 0) {
+            throw new Error("Hiçbir link bulunamadı. Ekşi Sözlük HTML yapısı değişmiş olabilir.");
+        }
+
+        const today = new Date().toISOString().split('T')[0];
+        const client = await pool.connect();
         try {
-            const page = await initialBrowser.newPage();
-            await page.goto('https://eksisozluk.com/debe', { waitUntil: 'networkidle2', timeout: 120000 });
-            entryLinks = await page.evaluate(() => 
-                Array.from(document.querySelectorAll('ul.topic-list li a')).map(el => ({
-                    title: el.innerText.trim(),
-                    link: el.href
-                }))
-            );
-        } finally {
-            if (initialBrowser) await initialBrowser.close();
-        }
-
-        console.log(`Başarıyla ${entryLinks.length} adet link bulundu. İçerikler tek tek çekilecek...`);
-
-        // --- NİHAİ ÇÖZÜM: HER BİR ENTRY İÇİN YENİDEN DENEME MANTIĞIYLA ÇALIŞ ---
-        const finalDebeList = [];
-        const MAX_RETRIES = 2; // Her sayfa için toplam 3 deneme (1 asıl + 2 tekrar)
-
-        for (let i = 0; i < entryLinks.length; i++) {
-            const entry = entryLinks[i];
-            console.log(`--- Entry ${i + 1}/${entryLinks.length} işleniyor: ${entry.title} ---`);
+            await client.query('BEGIN');
+            // O güne ait eski kayıtları (varsa) temizle
+            await client.query('DELETE FROM debes WHERE date = $1', [today]);
             
-            let success = false;
-            for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
-                let browser = null;
-                try {
-                    // Her deneme arasına küçük bir gecikme ekle
-                    if (attempt > 1) {
-                         const retryDelay = 2000 * attempt; // Her denemede daha uzun bekle
-                         console.log(`${retryDelay / 1000} saniye sonra tekrar denenecek... (deneme ${attempt})`);
-                         await delay(retryDelay);
-                    } else {
-                         await delay(Math.random() * 1500 + 500); // Normal bekleme
-                    }
-                    
-                    browser = await launchBrowser();
-                    const page = await browser.newPage();
-                    
-                    await page.goto(entry.link, { waitUntil: 'networkidle2', timeout: 120000 });
-                    
-                    const entryContent = await page.evaluate(() => document.querySelector('div.content')?.innerHTML.trim() || "İçerik bulunamadı.");
-                    finalDebeList.push({ ...entry, content: entryContent });
-                    
-                    console.log(`'${entry.title}' başarıyla çekildi.`);
-                    success = true;
-                    break; // Başarılı olunca yeniden deneme döngüsünden çık
-
-                } catch (singleError) {
-                    console.error(`HATA (deneme ${attempt}): '${entry.title}' çekilemedi. Hata: ${singleError.message}`);
-                    if (attempt === MAX_RETRIES + 1) {
-                        console.error(`'${entry.title}' için tüm denemeler başarısız oldu. Bu entry atlanıyor.`);
-                    }
-                } finally {
-                    if (browser) await browser.close();
-                }
-            }
-             console.log(`--- Entry ${i + 1} tamamlandı ---`);
-        }
-
-        if (finalDebeList.length > 0) {
             const insertSql = `
-                INSERT INTO debes (date, content) VALUES ($1, $2)
-                ON CONFLICT (date) DO UPDATE SET content = EXCLUDED.content;
+                INSERT INTO debes (date, "entryOrder", title, link)
+                VALUES ($1, $2, $3, $4)
+                ON CONFLICT (link) DO NOTHING;
             `;
-            const contentString = JSON.stringify(finalDebeList);
-            await pool.query(insertSql, [targetDate, contentString]);
-            console.log(`Yeni veri (${targetDate}) başarıyla veritabanına kaydedildi. Toplam ${finalDebeList.length} entry işlendi.`);
-        } else {
-            console.warn("Hiçbir entry başarıyla çekilemedi, veritabanına kayıt yapılmadı.");
+            for (const entry of entryLinks) {
+                await client.query(insertSql, [today, entry.order, entry.title, entry.link]);
+            }
+            await client.query('COMMIT');
+            console.log(`Faz 1 tamamlandı: ${entryLinks.length} adet link veritabanına eklendi.`);
+            return { success: true };
+        } catch (e) {
+            await client.query('ROLLBACK');
+            throw e;
+        } finally {
+            client.release();
         }
-
-        return { success: true, message: `İşlem tamamlandı. Başarıyla ${finalDebeList.length} entry işlendi.` };
     } catch (error) {
-        console.error("Kazıma sırasında genel bir hata oluştu:", error);
-        return { success: false, message: "Kazıma sırasında genel bir hata oluştu." };
+        console.error("Faz 1 (Link Kazıma) sırasında hata oluştu:", error);
+        return { success: false };
     } finally {
+        if (browser) await browser.close();
         await pool.end();
-        console.log("Kazıma işlemi ve veritabanı bağlantısı sonlandırıldı.");
     }
 };
 
-module.exports = { scrapeAndSave };
+// Faz 2: İçerik alanı boş olan kayıtları çeker ve doldurur
+const scrapeContent = async () => {
+    console.log("Faz 2: İçerik doldurma işlemi başlıyor...");
+     const { Pool } = require('pg');
+    const isProduction = process.env.NODE_ENV === 'production';
+    const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+        ssl: isProduction ? { rejectUnauthorized: false } : false,
+    });
+    
+    let browser = null;
+    try {
+        const selectSql = `SELECT link, title FROM debes WHERE content IS NULL ORDER BY "entryOrder" ASC LIMIT $1`;
+        const { rows: entriesToProcess } = await pool.query(selectSql, [BATCH_SIZE]);
+
+        if (entriesToProcess.length === 0) {
+            console.log("İçeriği doldurulacak yeni kayıt bulunamadı. İşlem tamamlandı.");
+            return { success: true };
+        }
+        
+        console.log(`${entriesToProcess.length} adet entry'nin içeriği doldurulacak.`);
+        
+        browser = await launchBrowser();
+        const page = await browser.newPage();
+        
+        for (const entry of entriesToProcess) {
+             console.log(`İçerik çekiliyor: ${entry.title}`);
+             try {
+                await page.goto(entry.link, { waitUntil: 'networkidle2', timeout: 120000 });
+                const entryContent = await page.evaluate(() => document.querySelector('div.content')?.innerHTML.trim() || "İçerik bulunamadı.");
+                
+                const updateSql = `UPDATE debes SET content = $1 WHERE link = $2`;
+                await pool.query(updateSql, [entryContent, entry.link]);
+                console.log(`'${entry.title}' içeriği başarıyla güncellendi.`);
+             } catch(e) {
+                 console.error(`HATA: '${entry.title}' içeriği çekilemedi. Hata: ${e.message}`);
+             }
+        }
+        console.log("Faz 2 (İçerik Doldurma) tamamlandı.");
+        return { success: true };
+    } catch (error) {
+        console.error("Faz 2 (İçerik Doldurma) sırasında hata oluştu:", error);
+        return { success: false };
+    } finally {
+        if (browser) await browser.close();
+        await pool.end();
+    }
+};
+
+module.exports = { scrapeLinks, scrapeContent };
+
