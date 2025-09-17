@@ -22,12 +22,11 @@ const runScrapeProcess = async () => {
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: isProduction ? { rejectUnauthorized: false } : false,
-        family: 4, // IPv4 kullan   
+        family: 4, // IPv4 kullan
     });
 
     try {
         // --- ADIM 1: VERİTABANINI KONTROL ET ---
-        // Bugün için zaten linkler çekilmiş mi diye bak.
         const checkSql = 'SELECT COUNT(*) FROM debes WHERE date = $1';
         const { rows } = await pool.query(checkSql, [today]);
         const linkCount = parseInt(rows[0].count, 10);
@@ -77,7 +76,9 @@ const runScrapeProcess = async () => {
         console.log("Faz 2 (İçerik Doldurma) başlıyor...");
         let browser = null;
         try {
-            const selectSql = `SELECT link, title FROM debes WHERE date = $1 AND content IS NULL ORDER BY "entryOrder" ASC LIMIT $1`;
+            // DÜZELTME: LIMIT için $1 yerine $2 kullanıldı.
+            const selectSql = `SELECT link, title FROM debes WHERE date = $1 AND content IS NULL ORDER BY "entryOrder" ASC LIMIT $2`;
+            // DÜZELTME: pool.query'ye BATCH_SIZE parametresi eklendi.
             const { rows: entriesToProcess } = await pool.query(selectSql, [today, BATCH_SIZE]);
 
             if (entriesToProcess.length === 0) {
