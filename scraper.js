@@ -11,6 +11,13 @@ const runScrapeProcess = async () => {
     const chromium = (await import('@sparticuz/chromium')).default;
     const puppeteer = (await import('puppeteer-core')).default;
 
+    launchOptions = {
+            args: chromium.args,
+            defaultViewport: chromium.defaultViewport,
+            executablePath: await chromium.executablePath(),
+            headless: chromium.headless, // Canlıda her zaman gizli mod
+        };
+
     console.log(`GitHub Actions üzerinde kazıma işlemi başlıyor...`);
     const today = new Date().toISOString().split('T')[0];
     // Veritabanı bağlantısını GitHub Secrets'tan alacak
