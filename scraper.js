@@ -12,7 +12,7 @@ const runScrapeProcess = async () => {
     const puppeteer = (await import('puppeteer-core')).default;
 
     console.log(`GitHub Actions üzerinde kazıma işlemi başlıyor...`);
-    
+    const today = new Date().toISOString().split('T')[0];
     // Veritabanı bağlantısını GitHub Secrets'tan alacak
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
