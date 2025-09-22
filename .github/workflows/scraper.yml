@@ -1,0 +1,29 @@
+name: Eksi Debe Scraper
+
+on:
+  workflow_dispatch: # Manuel olarak tetikleme izni
+  schedule:
+    # Her gün Türkiye saatiyle sabah 05:00'te çalışır
+    - cron: '0 2 * * *'
+
+jobs:
+  scrape:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Kodu Kopyala
+        uses: actions/checkout@v3
+
+      - name: Node.js Kurulumu
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18' # package.json ile aynı olmalı
+
+      - name: Bağımlılıkları Yükle
+        run: npm install
+
+      - name: Kazıma İşlemini Başlat
+        # GitHub Secrets'ı ortam değişkeni olarak kullan
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: node scraper.js

@@ -1,43 +1,64 @@
 // scraper-logic.js
-const BATCH_SIZE = 15;
-
-const launchBrowser = async () => {
-    const chromium = (await import('@sparticuz/chromium')).default;
-    const puppeteer = (await import('puppeteer-core')).default;
-    return puppeteer.launch({
-        args: chromium.args,
-        defaultViewport: chromium.defaultViewport,
-        executablePath: await chromium.executablePath(),
-        headless: chromium.headless,
-    });
-};
+require('dotenv').config();
 
 // Bu, artık bizim tek ana kazıyıcı fonksiyonumuz olacak.
 const runScrapeProcess = async () => {
+    // Ortamın production olup olmadığını ve debug modunu kontrol et
+    const isProduction = process.env.NODE_ENV === 'production';
+    const isDebugMode = process.env.DEBUG_MODE === 'true';
+    
+    let puppeteer;
+    let launchOptions;
+
+    // Ortama göre doğru kütüphaneleri ve ayarları seç
+    if (isProduction) {
+        // CANLI ORTAM (RENDER) İÇİN AYARLAR
+        console.log("Canlı ortam (production) algılandı. @sparticuz/chromium kullanılıyor.");
+        const chromium = (await import('@sparticuz/chromium')).default;
+        puppeteer = (await import('puppeteer-core')).default;
+        
+        launchOptions = {
+            args: chromium.args,
+            defaultViewport: chromium.defaultViewport,
+            executablePath: await chromium.executablePath(),
+            headless: chromium.headless, // Canlıda her zaman gizli mod
+        };
+    } else {
+        // LOKAL ORTAM (SENİN BİLGİSAYARIN) İÇİN AYARLAR
+        console.log("Lokal ortam (development) algılandı. Standart puppeteer kullanılıyor.");
+        puppeteer = (await import('puppeteer')).default;
+        
+        launchOptions = {
+            headless: !isDebugMode, // Debug modu true ise, headless false olur (tarayıcı görünür)
+        };
+        if(isDebugMode) console.log("DEBUG MODU AKTİF: Tarayıcı görünür olacak.");
+    }
+        
     const today = new Date().toISOString().split('T')[0];
     console.log(`Akıllı kazıma işlemi başlıyor: ${today}`);
     
     const { Pool } = require('pg');
-    const isProduction = process.env.NODE_ENV === 'production';
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
         ssl: isProduction ? { rejectUnauthorized: false } : false,
-        family: 4, // IPv4 kullan
     });
 
     try {
-        // --- ADIM 1: VERİTABANINI KONTROL ET ---
         const checkSql = 'SELECT COUNT(*) FROM debes WHERE date = $1';
         const { rows } = await pool.query(checkSql, [today]);
         const linkCount = parseInt(rows[0].count, 10);
 
-        // --- ADIM 2: EĞER LİNK YOKSA, LİNKLERİ ÇEK (FAZ 1) ---
         if (linkCount === 0) {
             console.log(`Bugün (${today}) için link bulunamadı. Faz 1 (Link Kazıma) başlıyor...`);
             let browser = null;
             try {
-                browser = await launchBrowser();
+                browser = await puppeteer.launch(launchOptions);
                 const page = await browser.newPage();
+
+                // --- EKLENEN OPTİMİZASYON SATIRLARI ---
+                await page.setViewport({ width: 1920, height: 1080 });
+                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
+
                 await page.goto('https://eksisozluk.com/debe', { waitUntil: 'networkidle2', timeout: 120000 });
                 
                 const entryLinks = await page.evaluate(() =>
@@ -72,14 +93,11 @@ const runScrapeProcess = async () => {
             console.log(`Bugün (${today}) için ${linkCount} link zaten mevcut. Faz 1 atlanıyor.`);
         }
 
-        // --- ADIM 3: İÇERİĞİ BOŞ OLANLARI DOLDUR (FAZ 2) ---
         console.log("Faz 2 (İçerik Doldurma) başlıyor...");
         let browser = null;
         try {
-            // DÜZELTME: LIMIT için $1 yerine $2 kullanıldı.
             const selectSql = `SELECT link, title FROM debes WHERE date = $1 AND content IS NULL ORDER BY "entryOrder" ASC LIMIT $2`;
-            // DÜZELTME: pool.query'ye BATCH_SIZE parametresi eklendi.
-            const { rows: entriesToProcess } = await pool.query(selectSql, [today, BATCH_SIZE]);
+            const { rows: entriesToProcess } = await pool.query(selectSql, [today, 15]);
 
             if (entriesToProcess.length === 0) {
                 console.log("İçeriği doldurulacak yeni kayıt bulunamadı. İşlem tamamlandı.");
@@ -88,8 +106,12 @@ const runScrapeProcess = async () => {
             
             console.log(`${entriesToProcess.length} adet entry'nin içeriği doldurulacak.`);
             
-            browser = await launchBrowser();
+            browser = await puppeteer.launch(launchOptions);
             const page = await browser.newPage();
+            
+            // --- EKLENEN OPTİMİZASYON SATIRLARI ---
+            await page.setViewport({ width: 1920, height: 1080 });
+            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
             
             for (const entry of entriesToProcess) {
                  console.log(`İçerik çekiliyor: ${entry.title}`);
