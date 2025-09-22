@@ -1,6 +1,8 @@
 // scraper.js
 require('dotenv').config();
 
+const BATCH_SIZE = 10;
+
 const runScrapeProcess = async () => {
     // Bu betik doğrudan GitHub Actions'da çalışacağı için
     // her zaman 'production' ortamındadır.
@@ -84,7 +86,7 @@ const runScrapeProcess = async () => {
         let browser = null;
         try {
             const selectSql = `SELECT link, title FROM debes WHERE date = $1 AND content IS NULL ORDER BY "entryOrder" ASC LIMIT $2`;
-            const { rows: entriesToProcess } = await pool.query(selectSql, [today, 15]);
+            const { rows: entriesToProcess } = await pool.query(selectSql, [today, BATCH_SIZE]);
 
             if (entriesToProcess.length === 0) {
                 console.log("İçeriği doldurulacak yeni kayıt bulunamadı. İşlem tamamlandı.");
