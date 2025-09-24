@@ -1,7 +1,8 @@
 // scraper.js
+// scraper.js
 require('dotenv').config();
 
-const BATCH_SIZE = 10;
+const BATCH_SIZE = 10; // Her döngüde kaç entry işleyeceğimizi belirler.
 
 const runScrapeProcess = async () => {
     // Bu betik doğrudan GitHub Actions'da çalışacağı için
@@ -13,12 +14,12 @@ const runScrapeProcess = async () => {
     const chromium = (await import('@sparticuz/chromium')).default;
     const puppeteer = (await import('puppeteer-core')).default;
 
-    launchOptions = {
+    const launchOptions = {
             args: chromium.args,
             defaultViewport: chromium.defaultViewport,
             executablePath: await chromium.executablePath(),
-            headless: chromium.headless, // Canlıda her zaman gizli mod
-        };
+            headless: chromium.headless,
+    };
 
     console.log(`GitHub Actions üzerinde kazıma işlemi başlıyor...`);
     const today = new Date().toISOString().split('T')[0];
@@ -28,28 +29,33 @@ const runScrapeProcess = async () => {
         ssl: isProduction ? { rejectUnauthorized: false } : false,
     });
     
-    // ... (Buraya, en son çalışan, "Nihai Dayanıklı Sürüm" 
-    // scraper-logic.js dosyasının içindeki tüm 'try...catch...finally' 
-    // bloğunu kopyalayıp yapıştırıyoruz.) ...
-    
     try {
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS debes (
+                id SERIAL PRIMARY KEY,
+                date DATE NOT NULL,
+                "entryOrder" INTEGER NOT NULL,
+                title TEXT NOT NULL,
+                link TEXT NOT NULL UNIQUE,
+                content TEXT,
+                createdAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // --- FAZ 1: Linkleri Çek (Eğer Gerekliyse) ---
         const checkSql = 'SELECT COUNT(*) FROM debes WHERE date = $1';
         const { rows } = await pool.query(checkSql, [today]);
-        const linkCount = parseInt(rows[0].count, 10);
-
-        if (linkCount === 0) {
+        if (parseInt(rows[0].count, 10) === 0) {
             console.log(`Bugün (${today}) için link bulunamadı. Faz 1 (Link Kazıma) başlıyor...`);
             let browser = null;
             try {
                 browser = await puppeteer.launch(launchOptions);
                 const page = await browser.newPage();
-
-                // --- EKLENEN OPTİMİZASYON SATIRLARI ---
+                
                 await page.setViewport({ width: 1920, height: 1080 });
-                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
+                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.0 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
 
                 await page.goto('https://eksisozluk.com/debe', { waitUntil: 'networkidle2', timeout: 120000 });
-                
                 const entryLinks = await page.evaluate(() =>
                     Array.from(document.querySelectorAll('ul.topic-list li a')).map((el, index) => ({
                         title: el.innerText.trim(),
@@ -57,7 +63,6 @@ const runScrapeProcess = async () => {
                         order: index + 1
                     }))
                 );
-
                 if (entryLinks.length > 0) {
                     const client = await pool.connect();
                     try {
@@ -67,63 +72,54 @@ const runScrapeProcess = async () => {
                             await client.query(insertSql, [today, entry.order, entry.title, entry.link]);
                         }
                         await client.query('COMMIT');
-                        console.log(`Faz 1 tamamlandı: ${entryLinks.length} adet link veritabanına eklendi.`);
-                    } catch (e) {
-                        await client.query('ROLLBACK');
-                        throw e;
-                    } finally {
-                        client.release();
-                    }
+                        console.log(`Faz 1 tamamlandı: ${entryLinks.length} adet link eklendi.`);
+                    } catch (e) { await client.query('ROLLBACK'); throw e; } 
+                    finally { client.release(); }
                 }
             } finally {
                 if (browser) await browser.close();
             }
         } else {
-            console.log(`Bugün (${today}) için ${linkCount} link zaten mevcut. Faz 1 atlanıyor.`);
+             console.log(`Bugün (${today}) için linkler zaten mevcut. Faz 1 atlanıyor.`);
         }
 
+        // --- FAZ 2: İçerikleri Döngü İçinde Doldur ---
         console.log("Faz 2 (İçerik Doldurma) başlıyor...");
-        let browser = null;
-        try {
+        while (true) {
             const selectSql = `SELECT link, title FROM debes WHERE date = $1 AND content IS NULL ORDER BY "entryOrder" ASC LIMIT $2`;
             const { rows: entriesToProcess } = await pool.query(selectSql, [today, BATCH_SIZE]);
 
             if (entriesToProcess.length === 0) {
-                console.log("İçeriği doldurulacak yeni kayıt bulunamadı. İşlem tamamlandı.");
-                return;
+                console.log("İçeriği doldurulacak başka kayıt kalmadı. İşlem başarıyla tamamlandı.");
+                break; // Döngüden çık
             }
             
-            console.log(`${entriesToProcess.length} adet entry'nin içeriği doldurulacak.`);
-            
-            browser = await puppeteer.launch(launchOptions);
-            const page = await browser.newPage();
-            
-            // --- EKLENEN OPTİMİZASYON SATIRLARI ---
-            await page.setViewport({ width: 1920, height: 1080 });
-            await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
-            
-            for (const entry of entriesToProcess) {
-                 console.log(`İçerik çekiliyor: ${entry.title}`);
-                 try {
-                    await page.goto(entry.link, { waitUntil: 'networkidle2', timeout: 120000 });
-                    await page.waitForSelector('div.content', { timeout: 10000 });
-                    
-                    const entryContent = await page.evaluate(() => {
-                        const element = document.querySelector('div.content');
-                        return element ? element.innerHTML.trim() : "İçerik elementi evaluate içinde bulunamadı.";
-                    });
+            console.log(`Döngü başladı: ${entriesToProcess.length} adet entry işlenecek...`);
+            let browser = null;
+            try {
+                browser = await puppeteer.launch(launchOptions);
+                const page = await browser.newPage();
 
-                    const updateSql = `UPDATE debes SET content = $1 WHERE link = $2`;
-                    await pool.query(updateSql, [entryContent, entry.link]);
-                    console.log(`'${entry.title}' içeriği başarıyla güncellendi.`);
-                 } catch(e) {
-                     console.error(`HATA: '${entry.title}' içeriği çekilemedi. Hata: ${e.message}`);
-                 }
+                await page.setViewport({ width: 1920, height: 1080 });
+                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.0 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
+
+                for (const entry of entriesToProcess) {
+                     console.log(`- İçerik çekiliyor: ${entry.title}`);
+                     try {
+                        await page.goto(entry.link, { waitUntil: 'networkidle2', timeout: 120000 });
+                        await page.waitForSelector('div.content', { timeout: 10000 });
+                        const entryContent = await page.evaluate(() => document.querySelector('div.content')?.innerHTML.trim() || "İçerik bulunamadı.");
+                        const updateSql = `UPDATE debes SET content = $1 WHERE link = $2`;
+                        await pool.query(updateSql, [entryContent, entry.link]);
+                     } catch(e) {
+                         console.error(`-- HATA: '${entry.title}' çekilemedi. Hata: ${e.message}`);
+                     }
+                }
+            } finally {
+                if (browser) await browser.close();
+                console.log("Döngü tamamlandı, tarayıcı kapatıldı.");
             }
-        } finally {
-            if (browser) await browser.close();
         }
-        
     } catch (error) {
         console.error("Akıllı kazıma işlemi sırasında genel bir hata oluştu:", error);
     } finally {

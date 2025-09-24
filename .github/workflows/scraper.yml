@@ -3,13 +3,16 @@ name: Eksi Debe Scraper
 on:
   workflow_dispatch: # Manuel olarak tetikleme izni
   schedule:
-    # Her saat başı, ilk yarım saatte 5 dakika aralıklarla çalışır.
-    # Bu, UTC saatine göredir. Türkiye saati için +3 eklenir (örn: 05:00, 05:05...)
-    - cron: '30,35,40,45,50,55 4 * * *'
+    # Her gün UTC saatiyle 03:00'da (Türkiye saatiyle sabah 06:00) çalışır.
+    # Bu saat, sitelerin en az yoğun olduğu zamandır.
+    - cron: '0 5 * * *'
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    
+    # Görevin en fazla 1 saat sürmesine izin ver.
+    timeout-minutes: 60 
 
     steps:
       - name: Kodu Kopyala
@@ -18,13 +21,12 @@ jobs:
       - name: Node.js Kurulumu
         uses: actions/setup-node@v3
         with:
-          node-version: '18' # package.json ile aynı olmalı
+          node-version: '18'
 
       - name: Bağımlılıkları Yükle
         run: npm install
 
       - name: Kazıma İşlemini Başlat
-        # GitHub Secrets'ı ortam değişkeni olarak kullan
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
         run: node scraper.js
