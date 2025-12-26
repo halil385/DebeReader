@@ -19,6 +19,7 @@
             --vs-text-muted: #8a8a8a;
             --vs-border: #3F3F41;
             --vs-accent-blue: #007ACC;
+            --vs-read-item: #6c757d; /* Okunmuş öğe rengi */
         }
 
         body {
@@ -86,7 +87,20 @@
         .main-header { background-color: var(--vs-header-bg); padding: 8px 15px; flex-shrink: 0; border-bottom: 1px solid var(--vs-border); }
         .main-header h1 { font-size: 18px; margin: 0; }
         .main-content { padding: 20px; overflow-y: auto; }
+        /* --- Akordeon ve Okunma Durumu --- */
         .accordion { --bs-accordion-bg: var(--vs-bg); --bs-accordion-border-color: var(--vs-border); --bs-accordion-button-color: var(--vs-text); --bs-accordion-active-bg: #2d2d30; --bs-accordion-active-color: var(--vs-accent-blue); }
+        
+        /* Okunmuş buton stili */
+        .accordion-button.read-entry {
+            color: var(--vs-read-item) !important;
+            opacity: 0.7;
+        }
+        
+        /* Aktifken (açıkken) okunmuş olsa bile vurgula */
+        .accordion-button.read-entry:not(.collapsed) {
+            color: var(--vs-accent-blue) !important;
+            opacity: 1;
+        }
 
         /* --- MOBİL TARİH SEÇİCİ --- */
         .mobile-date-selector {
@@ -230,8 +244,40 @@
             const dateLoader = document.getElementById('date-archive-loader');
             const mainTitle = document.getElementById('main-title');
             const mobileDateSelect = document.getElementById('mobile-date-select');
-            //const baseApiUrl = 'https://debe-api.onrender.com'; //canlı ortam
-            const baseApiUrl = 'http://localhost:3000'; // local
+            const baseApiUrl = 'https://debe-api.onrender.com'; //canlı ortam
+            //const baseApiUrl = 'http://localhost:3000'; // local
+
+            // --- TTS (Sesli Okuma) Değişkenleri ---
+            let synth = window.speechSynthesis;
+            let isSpeaking = false;
+
+            // --- PWA Service Worker (Basit) ---
+            const swCode = `
+                self.addEventListener('install', e => e.waitUntil(caches.open('debe-v1').then(c => c.addAll(['/']))));
+                self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))));
+            `;
+            const swBlob = new Blob([swCode], {type: 'application/javascript'});
+            const swUrl = URL.createObjectURL(swBlob);
+            
+            if ('serviceWorker' in navigator) {
+                try {
+                    // Sadece güvenli bağlamlarda (HTTPS veya localhost) çalıştır
+                    if (window.location.protocol === 'https:' || window.location.hostname === 'localhost') {
+                        const swCode = `
+                            self.addEventListener('install', e => e.waitUntil(caches.open('debe-v1').then(c => c.addAll(['/']))));
+                            self.addEventListener('fetch', e => e.respondWith(caches.match(e.request).then(r => r || fetch(e.request))));
+                        `;
+                        const swBlob = new Blob([swCode], {type: 'application/javascript'});
+                        const swUrl = URL.createObjectURL(swBlob);
+                        
+                        navigator.serviceWorker.register(swUrl)
+                            .then(reg => console.log('Service Worker başarıyla kaydedildi:', reg))
+                            .catch(err => console.log('Service Worker kaydı başarısız (Beklenen durum olabilir):', err));
+                    }
+                } catch (e) {
+                    console.log('PWA özellikleri bu ortamda devre dışı:', e);
+                }
+            }
 
             // --- Şaka Hata Mesajı Mantığı (Geri Eklendi) ---
             const jokeAlert = document.getElementById('joke-alert');
@@ -240,6 +286,89 @@
             mockElements.forEach(el => el.addEventListener('click', (e) => { e.stopPropagation(); jokeAlert.style.display = 'flex'; }));
             closeAlertBtn.addEventListener('click', () => jokeAlert.style.display = 'none');
             jokeAlert.addEventListener('click', () => jokeAlert.style.display = 'none');
+
+            // --- Read Status (Okunma Durumu) Yardımcı Fonksiyonları ---
+            const getReadEntries = () => {
+                const stored = localStorage.getItem('debe_read_ids');
+                return stored ? JSON.parse(stored) : [];
+            };
+
+            window.markAsRead = (id, btn) => {
+                const readIds = getReadEntries();
+                if (!readIds.includes(id)) {
+                    readIds.push(id);
+                    localStorage.setItem('debe_read_ids', JSON.stringify(readIds));
+                    // Butona tıklanınca class ekle
+                    btn.classList.add('read-entry');
+                }
+            };
+
+            // --- TTS Yardımcı Fonksiyonu: En Doğal Sesi Bul ---
+            const getBestVoice = () => {
+                const voices = synth.getVoices();
+                // 1. Öncelik: Google Türkçe (Android/Chrome için çok doğal)
+                let bestVoice = voices.find(v => v.name.includes("Cem"));
+                // 2. Öncelik: Yelda veya Cem (iOS/macOS için)
+                if (!bestVoice) bestVoice = voices.find(v => v.name.includes("Google Türkçe") || v.name.includes("Yelda"));
+                // 3. Öncelik: Herhangi bir Türkçe ses
+                if (!bestVoice) bestVoice = voices.find(v => v.lang.startsWith("tr"));
+                
+                return bestVoice;
+            };
+
+            // Sesleri önceden yükle (bazı tarayıcılar için gerekli)
+            if (speechSynthesis.onvoiceschanged !== undefined) {
+                speechSynthesis.onvoiceschanged = getBestVoice;
+            }
+
+            // Global seslendirme fonksiyonu
+            window.speakThis = (btn) => {
+                // Gizli içerik div'ini bul
+                const contentDiv = btn.parentElement.querySelector('.tts-content');
+                if (!contentDiv) return;
+
+                if (synth.speaking) {
+                    synth.cancel();
+                    if (isSpeaking) {
+                        isSpeaking = false;
+                        resetTTSButtons();
+                        return;
+                    }
+                }
+
+                // HTML temizliği
+                const div = document.createElement("div");
+                div.innerHTML = contentDiv.innerHTML;
+                const cleanText = div.textContent || div.innerText || "";
+
+                const utterance = new SpeechSynthesisUtterance(cleanText);
+                const voice = getBestVoice();
+                if (voice) utterance.voice = voice;
+                
+                utterance.rate = 1.0; 
+                utterance.pitch = 1.0;
+
+                utterance.onstart = () => {
+                    isSpeaking = true;
+                    btn.innerHTML = '<i class="bi bi-stop-circle-fill"></i> Durdur';
+                    btn.classList.replace('btn-outline-warning', 'btn-warning');
+                };
+
+                utterance.onend = () => {
+                    isSpeaking = false;
+                    btn.innerHTML = '<i class="bi bi-megaphone-fill"></i> Dinle';
+                    btn.classList.replace('btn-warning', 'btn-outline-warning');
+                };
+
+                synth.speak(utterance);
+            };
+
+            const resetTTSButtons = () => {
+                document.querySelectorAll('.tts-btn').forEach(b => {
+                    b.innerHTML = '<i class="bi bi-megaphone-fill"></i> Dinle';
+                    b.classList.replace('btn-warning', 'btn-outline-warning');
+                });
+            };
 
             // --- Ana Fonksiyonlar ---
             const loadDebeData = (date = null) => {
@@ -260,16 +389,42 @@
                             debeContainer.innerHTML = `<div class="alert alert-warning">Bu tarih için gösterilecek Debe bulunamadı.</div>`;
                             return;
                         }
+
+                        const readIds = getReadEntries();
                         const accordionContainer = document.createElement('div');
                         accordionContainer.className = 'accordion';
                         accordionContainer.id = 'debeAccordion';
 
                         data.forEach((entry, index) => {
+                            const isRead = readIds.includes(entry.id);
+                            const readClass = isRead ? 'read-entry' : '';
+
                             accordionContainer.innerHTML += `
                                 <div class="accordion-item" id="item-${index}">
-                                    <h2 class="accordion-header"><button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#c${index}">${index + 1}. ${entry.title}</button></h2>
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed ${readClass}" 
+                                                type="button" 
+                                                data-bs-toggle="collapse" 
+                                                data-bs-target="#c${index}"
+                                                data-entry-id="${entry.id}"
+                                                onclick="markAsRead(${entry.id}, this)">
+                                            ${index + 1}. ${entry.title}
+                                        </button>
+                                    </h2>
                                     <div id="c${index}" class="accordion-collapse collapse" data-bs-parent="#debeAccordion">
-                                        <div class="accordion-body">${entry.content}<hr><a href="${entry.link}" target="_blank" class="btn btn-sm btn-outline-info mt-2"><i class="bi bi-box-arrow-up-right"></i> Entry'e git</a></div>
+                                        <div class="accordion-body">
+                                            <div class="entry-text">${entry.content}</div>
+                                            <hr>
+                                            <div class="d-flex gap-2">
+                                                <a href="${entry.link}" target="_blank" class="btn btn-sm btn-outline-info">
+                                                    <i class="bi bi-box-arrow-up-right"></i> Entry'e git
+                                                </a>
+                                                <button class="btn btn-sm btn-outline-warning tts-btn" onclick="speakThis(this)">
+                                                    <i class="bi bi-megaphone-fill"></i> Dinle
+                                                </button>
+                                                <div class="d-none tts-content">${entry.content}</div>
+                                            </div>
+                                        </div>
                                     </div>
                                 </div>`;
                         });
