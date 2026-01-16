@@ -4,6 +4,54 @@ require('dotenv').config();
 
 const BATCH_SIZE = 10; // Her döngüde kaç entry işleyeceğimizi belirler.
 
+const sendPushNotification = async (pool, title, body) => {
+    try {
+        console.log("Bildirim gönderimi için tokenlar kontrol ediliyor...");
+        
+        // Veritabanından tokenları çek
+        const { rows } = await pool.query("SELECT token FROM push_tokens");
+        const tokens = rows.map(r => r.token).filter(t => t); // Boş olmayanları al
+
+        if (tokens.length === 0) {
+            console.log("Bildirim gönderilecek kayıtlı cihaz/token bulunamadı.");
+            return;
+        }
+
+        console.log(`${tokens.length} adet cihaza bildirim hazırlanıyor...`);
+
+        // Expo formatına uygun mesajları hazırla
+        const messages = tokens.map(token => ({
+            to: token,
+            sound: 'default',
+            title: title,
+            body: body,
+            data: { url: 'debereader://home' }, // Uygulama açılınca yönlendirme için
+        }));
+
+        // Expo API'ye gönder (Node.js 18+ native fetch kullanılır)
+        const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Accept-encoding': 'gzip, deflate',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(messages),
+        });
+
+        const data = await response.json();
+        console.log(`Bildirim Sonucu: ${data.data?.status || 'İşlem Tamamlandı'}`);
+        
+        // Hataları logla (varsa)
+        if (data.errors) {
+            console.error("Bildirim hataları:", JSON.stringify(data.errors));
+        }
+
+    } catch (error) {
+        console.error("Bildirim gönderme işlemi sırasında hata:", error);
+    }
+};
+
 const runScrapeProcess = async () => {
     // Bu betik doğrudan GitHub Actions'da çalışacağı için
     // her zaman 'production' ortamındadır.
@@ -39,6 +87,15 @@ const runScrapeProcess = async () => {
                 link TEXT NOT NULL UNIQUE,
                 content TEXT,
                 createdAt TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
+
+        // --- YENİ: Push Token tablosunu garantiye al ---
+        await pool.query(`
+            CREATE TABLE IF NOT EXISTS push_tokens (
+                id SERIAL PRIMARY KEY,
+                token TEXT UNIQUE NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
         `);
 
@@ -91,6 +148,16 @@ const runScrapeProcess = async () => {
 
             if (entriesToProcess.length === 0) {
                 console.log("İçeriği doldurulacak başka kayıt kalmadı. İşlem başarıyla tamamlandı.");
+
+                // --- YENİ: Bildirim Gönderimi (İşlem bitince tetiklenir) ---
+                // Sadece veriler o an tamamlandıysa (zaten önceden tamamlanmışsa tekrar atmasın diye kontrol eklenebilir ama GitHub Actions günde 1 çalıştığı için sorun olmaz)
+                console.log("Kullanıcılara bildirim gönderiliyor...");
+                await sendPushNotification(
+                    pool, 
+                    "Debe Reader", 
+                    "Bugünün en beğenilen entryleri hazır! Okumak için tıkla."
+                );
+                
                 break; // Döngüden çık
             }
             
