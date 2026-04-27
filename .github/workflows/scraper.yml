@@ -5,7 +5,7 @@ on:
   schedule:
     # Her gün UTC saatiyle 03:00'da (Türkiye saatiyle sabah 06:00) çalışır.
     # Bu saat, sitelerin en az yoğun olduğu zamandır.
-    - cron: '0 4 * * *'
+    - cron: '0 3 * * *'
 
 jobs:
   scrape:
