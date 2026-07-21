@@ -1,13 +1,23 @@
 <?php
-// Çıktının JSON formatında olacağını ve karakter setinin UTF-8 olacağını tarayıcıya bildiriyoruz.
-header('Content-Type: application/json; charset=utf-8');
-// Farklı domain'lerden (örn: netlify) gelen isteklere izin veriyoruz (CORS).
-header('Access-Control-Allow-Origin: *');
+$allowed_origin = "https://www.halilurkmez.com";
+$allowed_origin = "*";
+header("Access-Control-Allow-Origin: " . $allowed_origin);
+header("Access-Control-Allow-Methods: GET, OPTIONS");
+header("Access-Control-Allow-Headers: Content-Type");
 
-// --- VERİTABANI BAĞLANTI BİLGİLERİ ---
-// DİKKAT: Bu bilgileri Supabase projenizin Ayarlar > Database > Connection string (URI) bölümünden alın.
-// "[YOUR-PASSWORD]" kısmını kendi şifrenizle değiştirmeyi unutmayın!
-$connection_string = "postgresql://postgres.mehefgjesxrsvszhoega:nnzFrr6is5coHZMV@aws-0-eu-central-1.pooler.supabase.com:5432/postgres";
+if ($_SERVER['REQUEST_METHOD'] == 'OPTIONS') {
+    exit(0);
+}
+
+header('Content-Type: application/json; charset=utf-8');
+
+$host = "aws-0-eu-central-1.pooler.supabase.com";
+$port = "6543";
+$dbname = "postgres";
+$user = "postgres.mehefgjesxrsvszhoega"; // Session Pooler için özel kullanıcı adı formatı
+$password = "nnzFrr6is5coHZMV"; // KENDİ ŞİFRENİZİ BURAYA GİRİN
+
+$connection_string = "host={$host} port={$port} dbname={$dbname} user={$user} password={$password} sslmode=require";
 
 // Veritabanına bağlan
 // @ işareti, olası bağlantı uyarılarının ekrana basılmasını engeller, hatayı kendimiz yöneteceğiz.
