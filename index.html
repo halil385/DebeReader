@@ -258,7 +258,7 @@
             const gundemDateLoader = document.getElementById('gundem-archive-loader');
             const mobileGundemSelect = document.getElementById('mobile-gundem-select');
             
-            const baseApiUrl = 'https://debe-api.onrender.com'; //canlı ortam
+            const baseApiUrl = 'https://www.halilurkmez.com/debe/api.php'; 
             //const baseApiUrl = 'http://localhost:3000'; // local
 
             // --- TTS (Sesli Okuma) Değişkenleri ---
@@ -384,12 +384,12 @@
                 });
             };
 
-            // --- Ana Fonksiyonlar ---
+            // --- API ÇAĞRILARI ---
             const loadDebeData = (date = null) => {
-                let url = `${baseApiUrl}/api/debe`;
+                let url = `${baseApiUrl}?endpoint=debe`;
                 let titleDate = 'Bugün';
                 if (date) {
-                    url += `?date=${date}`;
+                    url += `&date=${date}`;
                     titleDate = date;
                 }
                 mainTitle.innerHTML = `<i class="bi bi-filetype-js"></i> Debe: ${titleDate}`;
@@ -463,7 +463,7 @@
             };
             
             const loadDateArchive = () => {
-                fetch(`${baseApiUrl}/api/dates`)
+                fetch(`${baseApiUrl}?endpoint=dates`)
                     .then(res => res.json())
                     .then(dates => {
                         dateLoader.style.display = 'none';
@@ -505,10 +505,10 @@
 
             // --- ŞÜKELA FONKSİYONLARI ---
             const loadGundemData = (date = null) => {
-                let url = `${baseApiUrl}/api/gundem`;
+                let url = `${baseApiUrl}?endpoint=gundem`;
                 let titleDate = 'Bugün';
                 if (date) {
-                    url += `?date=${date}`;
+                    url += `&date=${date}`;
                     titleDate = date;
                 }
                 mainTitle.innerHTML = `<i class="bi bi-filetype-js"></i> Şükela: ${titleDate}`;
@@ -584,7 +584,7 @@
             };
 
             const loadGundemDateArchive = () => {
-                fetch(`${baseApiUrl}/api/gundem-dates`)
+                fetch(`${baseApiUrl}?endpoint=gundem-dates`)
                     .then(res => res.json())
                     .then(dates => {
                         gundemDateLoader.style.display = 'none';

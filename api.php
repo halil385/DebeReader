@@ -29,6 +29,10 @@ if ($endpoint === 'debe') {
     handleDebeRequest($dbconn);
 } elseif ($endpoint === 'dates') {
     handleDatesRequest($dbconn);
+} elseif ($endpoint === 'gundem') {
+    handleGundemRequest($dbconn);
+} elseif ($endpoint === 'gundem-dates') {
+    handleGundemDatesRequest($dbconn);
 } else {
     // Geçersiz bir endpoint istenirse 404 hatası döndür.
     http_response_code(404);
@@ -99,6 +103,56 @@ function handleDatesRequest($dbconn) {
     }
 
     // Sonucu JSON formatında ekrana basıyoruz.
+    echo json_encode($dates, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+}
+
+/**
+ * Belirli bir tarihe ait Gündem (Şükela) listesini çeker.
+ */
+function handleGundemRequest($dbconn) {
+    try {
+        $timezone = new DateTimeZone('Europe/Istanbul');
+        $date = new DateTime('now', $timezone);
+        $requestedDate = $_GET['date'] ?? $date->format('Y-m-d');
+    } catch (Exception $e) {
+        $requestedDate = date('Y-m-d'); 
+    }
+    
+    $sql = 'SELECT * FROM gundem_entries WHERE date = $1 ORDER BY rank ASC';
+    $result = pg_query_params($dbconn, $sql, array($requestedDate));
+
+    if (!$result) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Gündem sorgusu çalıştırılırken bir hata oluştu.']);
+        return;
+    }
+
+    $data = pg_fetch_all($result);
+    if ($data === false) {
+        $data = [];
+    }
+
+    echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
+}
+
+/**
+ * Gündem kayıtlı tüm tarihleri çeker.
+ */
+function handleGundemDatesRequest($dbconn) {
+    $sql = "SELECT DISTINCT to_char(date, 'YYYY-MM-DD') as date FROM gundem_entries ORDER BY date DESC";
+    $result = pg_query($dbconn, $sql);
+
+    if (!$result) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Gündem tarih listesi sorgusu çalıştırılırken hata oluştu.']);
+        return;
+    }
+
+    $dates = [];
+    while ($row = pg_fetch_assoc($result)) {
+        $dates[] = $row['date'];
+    }
+
     echo json_encode($dates, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT);
 }
 
