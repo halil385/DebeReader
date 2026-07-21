@@ -65,6 +65,7 @@ app.get('/api/dates', async (req, res) => {
     } catch (dbError) {
         console.error("Tarih listesi çekme hatası:", dbError);
         res.status(500).json({ error: 'Tarih listesi çekilirken bir hata oluştu.' });
+    }
 });
 
 // --- ŞÜKELA (GÜNDEM) ROTALARI ---
