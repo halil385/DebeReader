@@ -3,7 +3,8 @@ require('dotenv').config();
 const runGundemScraper = async () => {
     console.log("Gündem Scraper Başlatılıyor (Veritabanı Aktif)");
 
-    const isProduction = process.env.NODE_ENV === 'production';
+    // GitHub Actions otomatik olarak GITHUB_ACTIONS=true değişkenini atar
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.GITHUB_ACTIONS === 'true';
     const isDebugMode = process.env.DEBUG_MODE === 'true';
 
     const { Pool } = require('pg');
