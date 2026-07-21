@@ -1,11 +1,10 @@
-name: Eksi Debe Scraper
+name: Gündem Scraper
 
 on:
   workflow_dispatch: # Manuel olarak tetikleme izni
   schedule:
-    # Her gün UTC saatiyle 03:00'da (Türkiye saatiyle sabah 06:00) çalışır.
-    # Bu saat, sitelerin en az yoğun olduğu zamandır.
-    - cron: '0 2 * * *'
+    # Her gün Türkiye saatiyle 23:50'de (UTC 20:50) çalışır.
+    - cron: '50 20 * * *'
 
 jobs:
   scrape:
@@ -26,7 +25,7 @@ jobs:
       - name: Bağımlılıkları Yükle
         run: npm install
 
-      - name: Kazıma İşlemini Başlat
+      - name: Gündem Kazıma İşlemini Başlat
         env:
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
-        run: node scraper.js
+        run: node gundem-scraper.js
