@@ -165,7 +165,12 @@
                 <div class="mt-4">
                      <div class="panel-header">Debe Arşivi</div>
                      <div id="date-archive-loader" class="text-center p-2"><div class="spinner-border spinner-border-sm"></div></div>
-                     <ul id="date-archive-list" class="panel-list p-0" style="max-height: 300px; overflow-y: auto;"></ul>
+                     <ul id="date-archive-list" class="panel-list p-0" style="max-height: 250px; overflow-y: auto;"></ul>
+                </div>
+                <div class="mt-4">
+                     <div class="panel-header">Şükela Arşivi</div>
+                     <div id="gundem-archive-loader" class="text-center p-2"><div class="spinner-border spinner-border-sm"></div></div>
+                     <ul id="gundem-archive-list" class="panel-list p-0" style="max-height: 250px; overflow-y: auto;"></ul>
                 </div>
             </aside>
 
@@ -175,8 +180,13 @@
                 
                 <!-- MOBİL İÇİN TARİH SEÇİCİ -->
                 <div class="mobile-date-selector">
-                    <label for="mobile-date-select" class="form-label">Tarih Seç:</label>
-                    <select class="form-select" id="mobile-date-select">
+                    <label for="mobile-date-select" class="form-label">Debe Arşivi:</label>
+                    <select class="form-select mb-3" id="mobile-date-select">
+                        <!-- Seçenekler JS ile dolacak -->
+                    </select>
+                    
+                    <label for="mobile-gundem-select" class="form-label">Şükela Arşivi:</label>
+                    <select class="form-select" id="mobile-gundem-select">
                         <!-- Seçenekler JS ile dolacak -->
                     </select>
                 </div>
@@ -244,6 +254,10 @@
             const dateLoader = document.getElementById('date-archive-loader');
             const mainTitle = document.getElementById('main-title');
             const mobileDateSelect = document.getElementById('mobile-date-select');
+            const gundemArchiveList = document.getElementById('gundem-archive-list');
+            const gundemDateLoader = document.getElementById('gundem-archive-loader');
+            const mobileGundemSelect = document.getElementById('mobile-gundem-select');
+            
             const baseApiUrl = 'https://debe-api.onrender.com'; //canlı ortam
             //const baseApiUrl = 'http://localhost:3000'; // local
 
@@ -476,19 +490,157 @@
                 mobileDateSelect.appendChild(option);
             };
             
-            const setActiveDate = (selectedLi) => {
-                document.querySelectorAll('.archive-item').forEach(item => item.classList.remove('active'));
+            const setActiveDate = (selectedLi, parentList = dateArchiveList) => {
+                parentList.querySelectorAll('.archive-item').forEach(item => item.classList.remove('active'));
                 selectedLi.classList.add('active');
             };
 
             mobileDateSelect.addEventListener('change', (event) => {
                 const selectedDate = event.target.value || null;
+                // Şükela seçimini sıfırla
+                document.querySelectorAll('#gundem-archive-list .archive-item').forEach(item => item.classList.remove('active'));
+                mobileGundemSelect.value = '';
                 loadDebeData(selectedDate);
+            });
+
+            // --- ŞÜKELA FONKSİYONLARI ---
+            const loadGundemData = (date = null) => {
+                let url = `${baseApiUrl}/api/gundem`;
+                let titleDate = 'Bugün';
+                if (date) {
+                    url += `?date=${date}`;
+                    titleDate = date;
+                }
+                mainTitle.innerHTML = `<i class="bi bi-filetype-js"></i> Şükela: ${titleDate}`;
+                debeContainer.innerHTML = `<div class="text-center p-5"><div class="spinner-border"></div><p class="mt-2">Veriler yükleniyor...</p></div>`;
+
+                fetch(url)
+                    .then(res => res.json())
+                    .then(data => {
+                        debeContainer.innerHTML = '';
+                        if (!data || data.length === 0) {
+                            debeContainer.innerHTML = `<div class="alert alert-warning">Bu tarih için gösterilecek Şükela içeriği bulunamadı. (Örn: Kazıma henüz yapılmamış olabilir)</div>`;
+                            return;
+                        }
+
+                        const readIds = getReadEntries();
+                        const accordionContainer = document.createElement('div');
+                        accordionContainer.className = 'accordion';
+                        accordionContainer.id = 'debeAccordion';
+
+                        data.forEach((entry, index) => {
+                            const isRead = readIds.includes(entry.id);
+                            const readClass = isRead ? 'read-entry' : '';
+
+                            accordionContainer.innerHTML += `
+                                <div class="accordion-item" id="item-${index}">
+                                    <h2 class="accordion-header">
+                                        <button class="accordion-button collapsed ${readClass}" 
+                                                type="button" 
+                                                data-bs-toggle="collapse" 
+                                                data-bs-target="#c${index}"
+                                                data-entry-id="${entry.id}"
+                                                onclick="markAsRead(${entry.id}, this)">
+                                            ${entry.rank}. ${entry.topic_title}
+                                        </button>
+                                    </h2>
+                                    <div id="c${index}" class="accordion-collapse collapse" data-bs-parent="#debeAccordion">
+                                        <div class="accordion-body">
+                                            <div class="entry-text">${entry.entry_content}</div>
+                                            <div class="text-muted mt-3" style="font-size: 0.85em;">
+                                                <i class="bi bi-person-fill"></i> ${entry.entry_author} &nbsp;&nbsp; 
+                                                <i class="bi bi-clock-history"></i> ${entry.entry_date}
+                                            </div>
+                                            <hr>
+                                            <div class="d-flex gap-2">
+                                                <a href="${entry.topic_link}" target="_blank" class="btn btn-sm btn-outline-info">
+                                                    <i class="bi bi-box-arrow-up-right"></i> Entry'e git
+                                                </a>
+                                                <button class="btn btn-sm btn-outline-warning tts-btn" onclick="speakThis(this)">
+                                                    <i class="bi bi-megaphone-fill"></i> Dinle
+                                                </button>
+                                                <div class="d-none tts-content">${entry.entry_content}</div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>`;
+                        });
+                        debeContainer.appendChild(accordionContainer);
+
+                        const accordionItems = accordionContainer.querySelectorAll('.accordion-collapse');
+                        accordionItems.forEach((item, index) => {
+                            item.addEventListener('shown.bs.collapse', () => {
+                                const header = document.getElementById(`item-${index}`);
+                                setTimeout(() => {
+                                    header.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }, 200);
+                            });
+                        });
+                    })
+                    .catch(err => {
+                        console.error('Hata:', err);
+                        debeContainer.innerHTML = `<div class="alert alert-danger"><strong>Build Failed!</strong> Veriler yüklenirken bir hata oluştu.</div>`;
+                    });
+            };
+
+            const loadGundemDateArchive = () => {
+                fetch(`${baseApiUrl}/api/gundem-dates`)
+                    .then(res => res.json())
+                    .then(dates => {
+                        gundemDateLoader.style.display = 'none';
+                        gundemArchiveList.innerHTML = '';
+                        mobileGundemSelect.innerHTML = '';
+                        addGundemDateOption(null, 'Bugün', false);
+                        dates.forEach(date => addGundemDateOption(date, date));
+                    })
+                    .catch(err => gundemDateLoader.innerHTML = 'Arşiv yüklenemedi.');
+            };
+
+            const addGundemDateOption = (dateValue, dateText, isActive = false) => {
+                const li = document.createElement('li');
+                li.innerHTML = `<i class="bi ${isActive ? 'bi-star-fill text-warning' : 'bi-calendar3'}"></i> ${dateText}`;
+                li.classList.add('archive-item');
+                if (isActive) li.classList.add('active');
+                li.addEventListener('click', () => { 
+                    setActiveDate(li, gundemArchiveList); 
+                    // Debe seçimini sıfırla
+                    document.querySelectorAll('#date-archive-list .archive-item').forEach(item => item.classList.remove('active'));
+                    mobileDateSelect.value = '';
+                    loadGundemData(dateValue); 
+                });
+                gundemArchiveList.appendChild(li);
+
+                const option = document.createElement('option');
+                option.value = dateValue || '';
+                option.textContent = dateText;
+                if(isActive) option.selected = true;
+                mobileGundemSelect.appendChild(option);
+            };
+
+            mobileGundemSelect.addEventListener('change', (event) => {
+                const selectedDate = event.target.value || null;
+                // Debe seçimini sıfırla
+                document.querySelectorAll('#date-archive-list .archive-item').forEach(item => item.classList.remove('active'));
+                mobileDateSelect.value = '';
+                loadGundemData(selectedDate);
+            });
+
+            // setActiveDate fonksiyonu yukarıda güncellendi
+            
+            // Add click listener modification for Debe date clicks
+            document.getElementById('date-archive-list').addEventListener('click', (e) => {
+                const li = e.target.closest('.archive-item');
+                if (li) {
+                     // Şükela seçimini sıfırla
+                     document.querySelectorAll('#gundem-archive-list .archive-item').forEach(item => item.classList.remove('active'));
+                     mobileGundemSelect.value = '';
+                }
             });
 
             // --- Başlangıç ---
             loadDebeData();
             loadDateArchive();
+            loadGundemDateArchive();
         });
     </script>
 </body>

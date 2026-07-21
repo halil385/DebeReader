@@ -65,6 +65,35 @@ app.get('/api/dates', async (req, res) => {
     } catch (dbError) {
         console.error("Tarih listesi çekme hatası:", dbError);
         res.status(500).json({ error: 'Tarih listesi çekilirken bir hata oluştu.' });
+});
+
+// --- ŞÜKELA (GÜNDEM) ROTALARI ---
+app.get('/api/gundem', async (req, res) => {
+    const requestedDate = req.query.date || new Date().toISOString().split('T')[0];
+    try {
+        const sql = `SELECT * FROM gundem_entries WHERE date = $1 ORDER BY rank ASC`;
+        const result = await pool.query(sql, [requestedDate]);
+        
+        if (result.rows.length > 0) {
+            return res.json(result.rows);
+        } else {
+            return res.json([]);
+        }
+    } catch (dbError) {
+        console.error("Gündem veritabanı okuma hatası:", dbError);
+        res.status(500).json({ error: 'Veritabanı işlemi sırasında bir hata oluştu.' });
+    }
+});
+
+app.get('/api/gundem-dates', async (req, res) => {
+    try {
+        const sql = `SELECT DISTINCT to_char(date, 'YYYY-MM-DD') as date FROM gundem_entries ORDER BY date DESC`;
+        const result = await pool.query(sql);
+        const dates = result.rows.map(row => row.date);
+        res.json(dates);
+    } catch (dbError) {
+        console.error("Gündem tarih listesi çekme hatası:", dbError);
+        res.status(500).json({ error: 'Tarih listesi çekilirken bir hata oluştu.' });
     }
 });
 
