@@ -120,7 +120,7 @@ const runGundemScraper = async () => {
                 seenLinks.add(baseUrl);
                 uniqueTopics.push({
                     ...topic,
-                    sukelaLink: `${baseUrl}?a=nice` // Tüm zamanların en iyisi şukela. (Günlük için: ?a=dailynice)
+                    sukelaLink: `${baseUrl}?a=dailynice` // Tüm zamanların en iyisi şukela. (Günlük için: ?a=dailynice)
                 });
             }
         }
