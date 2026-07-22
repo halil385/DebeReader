@@ -1,5 +1,48 @@
 require('dotenv').config();
 
+const sendPushNotification = async (pool, title, body) => {
+    try {
+        console.log("Bildirim gönderimi için tokenlar kontrol ediliyor...");
+        
+        const { rows } = await pool.query("SELECT token FROM push_tokens");
+        const tokens = rows.map(r => r.token).filter(t => t);
+
+        if (tokens.length === 0) {
+            console.log("Bildirim gönderilecek kayıtlı cihaz/token bulunamadı.");
+            return;
+        }
+
+        console.log(`${tokens.length} adet cihaza bildirim hazırlanıyor...`);
+
+        const messages = tokens.map(token => ({
+            to: token,
+            sound: 'default',
+            title: title,
+            body: body,
+            data: { url: 'debereader://home' }, // Gündem sekmeniz varsa debereader://gundem yapabilirsiniz
+        }));
+
+        const response = await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: {
+                'Accept': 'application/json',
+                'Accept-encoding': 'gzip, deflate',
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(messages),
+        });
+
+        const data = await response.json();
+        console.log(`Bildirim Sonucu: ${data.data?.status || 'İşlem Tamamlandı'}`);
+        
+        if (data.errors) {
+            console.error("Bildirim hataları:", JSON.stringify(data.errors));
+        }
+    } catch (error) {
+        console.error("Bildirim gönderme işlemi sırasında hata:", error);
+    }
+};
+
 const runGundemScraper = async () => {
     console.log("Gündem Scraper Başlatılıyor (Veritabanı Aktif)");
 
@@ -158,14 +201,17 @@ const runGundemScraper = async () => {
                 });
 
                 if (entryData && entryData.content) {
-                    const today = new Date().toISOString().split('T')[0];
+                    // Scraper 23:50'de çalıştığı için veritabanına doğrudan bir gün sonrasını yazıyoruz.
+                    const dateObj = new Date();
+                    dateObj.setDate(dateObj.getDate() + 1);
+                    const displayDate = dateObj.toISOString().split('T')[0];
                     const insertSql = `
                         INSERT INTO gundem_entries (date, rank, topic_title, topic_link, entry_content, entry_author, entry_date)
                         VALUES ($1, $2, $3, $4, $5, $6, $7)
                         ON CONFLICT (date, topic_title) DO NOTHING;
                     `;
                     await pool.query(insertSql, [
-                        today,
+                        displayDate,
                         i + 1,
                         topic.title,
                         topic.sukelaLink,
@@ -200,6 +246,16 @@ const runGundemScraper = async () => {
         console.log(JSON.stringify(scrapedData.slice(0, 3), null, 2)); // İlk 3 veriyi detaylı göster
         console.log(`\nToplam ${scrapedData.length} adet veri çekildi.`);
         console.log("------------------------------------\n");
+
+        // Bildirimi gönder
+        if (scrapedData.length > 0) {
+            console.log("Kullanıcılara gündem bildirimi gönderiliyor...");
+            await sendPushNotification(
+                pool, 
+                "Gündem Şükela", 
+                "Günün en çok etkileşim alan gündem başlıkları hazır! Okumak için tıkla."
+            );
+        }
 
     } catch (error) {
         console.error("Gündem scraper sırasında genel bir hata oluştu:", error);
