@@ -4,7 +4,7 @@ on:
   workflow_dispatch: # Manuel olarak tetikleme izni
   schedule:
     # Her gün Türkiye saatiyle 23:50'de (UTC 20:50) çalışır.
-    - cron: '50 20 * * *'
+    - cron: '50 19 * * *'
 
 jobs:
   scrape:
