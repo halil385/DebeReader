@@ -5,14 +5,14 @@ on:
   schedule:
     # Her gün UTC saatiyle 03:00'da (Türkiye saatiyle sabah 06:00) çalışır.
     # Bu saat, sitelerin en az yoğun olduğu zamandır.
-    - cron: '0 3 * * *'
+    - cron: '0 4 * * *'
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
     
     # Görevin en fazla 1 saat sürmesine izin ver.
-    timeout-minutes: 60 
+    timeout-minutes: 30 
 
     steps:
       - name: Kodu Kopyala
