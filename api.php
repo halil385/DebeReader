@@ -43,6 +43,8 @@ if ($endpoint === 'debe') {
     handleGundemRequest($dbconn);
 } elseif ($endpoint === 'gundem-dates') {
     handleGundemDatesRequest($dbconn);
+} elseif ($endpoint === 'register_token') {
+    handleRegisterTokenRequest($dbconn);
 } else {
     // Geçersiz bir endpoint istenirse 404 hatası döndür.
     http_response_code(404);
@@ -189,5 +191,34 @@ if (date) {
     url += `&date=${date}`; // Tarih varsa, & ile ekliyoruz
 }
 */
-?>
 
+/**
+ * Mobil uygulamadan gelen Expo Push Token'larını veritabanına kaydeder.
+ */
+function handleRegisterTokenRequest($dbconn) {
+    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+        http_response_code(405);
+        echo json_encode(['error' => 'Sadece POST istekleri kabul edilir.']);
+        return;
+    }
+    
+    $token = $_POST['token'] ?? null;
+    
+    if (!$token) {
+        http_response_code(400);
+        echo json_encode(['error' => 'Token parametresi eksik.']);
+        return;
+    }
+
+    $sql = 'INSERT INTO push_tokens (token) VALUES ($1) ON CONFLICT (token) DO NOTHING';
+    $result = pg_query_params($dbconn, $sql, array($token));
+
+    if (!$result) {
+        http_response_code(500);
+        echo json_encode(['error' => 'Veritabanına token kaydedilirken bir hata oluştu.']);
+        return;
+    }
+
+    echo json_encode(['success' => true, 'message' => 'Token başarıyla kaydedildi.']);
+}
+?>

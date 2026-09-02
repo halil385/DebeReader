@@ -3,15 +3,16 @@ name: Gündem Scraper
 on:
   workflow_dispatch: # Manuel olarak tetikleme izni
   schedule:
-    # Her gün Türkiye saatiyle 23:50'de (UTC 20:50) çalışır.
-    - cron: '50 20 * * *'
+    # Her gün doğrudan Türkiye saatiyle (Europe/Istanbul) 23:50'de çalışır.
+    - cron: '50 23 * * *'
+      timezone: 'Europe/Istanbul'
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
     
     # Görevin en fazla 1 saat sürmesine izin ver.
-    timeout-minutes: 60 
+    timeout-minutes: 30 
 
     steps:
       - name: Kodu Kopyala
