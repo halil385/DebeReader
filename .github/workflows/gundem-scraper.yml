@@ -3,9 +3,14 @@ name: Gündem Scraper
 on:
   workflow_dispatch: # Manuel olarak tetikleme izni
   schedule:
+<<<<<<< HEAD
     # Her gün doğrudan Türkiye saatiyle (Europe/Istanbul) 23:50'de çalışır.
     - cron: '50 23 * * *'
       timezone: 'Europe/Istanbul'
+=======
+    # Her gün Türkiye saatiyle 23:50'de (UTC 20:50) çalışır.
+    - cron: '50 18 * * *'
+>>>>>>> cee6fe934a8990d45b3b42a497aea32b2a819e26
 
 jobs:
   scrape:

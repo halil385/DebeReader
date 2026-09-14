@@ -5,8 +5,12 @@ on:
   schedule:
     # Her gün doğrudan Türkiye saatiyle (Europe/Istanbul) sabah 08:00'da çalışır.
     # Bu saat, sitelerin en az yoğun olduğu zamandır.
+<<<<<<< HEAD
     - cron: '0 8 * * *'
       timezone: 'Europe/Istanbul'
+=======
+    - cron: '0 3 * * *'
+>>>>>>> cee6fe934a8990d45b3b42a497aea32b2a819e26
 
 jobs:
   scrape:
