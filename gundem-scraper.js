@@ -110,7 +110,7 @@ const runGundemScraper = async () => {
         for (let p = 1; p <= 3; p++) {
             console.log(`Gündem Sayfa ${p} taranıyor...`);
             const url = `https://eksisozluk.com/basliklar/gundem?p=${p}`;
-            await page.goto(url, { waitUntil: 'networkidle2', timeout: 60000 });
+            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
             
             // Başlıkları ve entry sayılarını çek
             const topicsOnPage = await page.evaluate(() => {
@@ -144,8 +144,8 @@ const runGundemScraper = async () => {
             });
             
             allTopics = allTopics.concat(topicsOnPage);
-            // Ekşisözlük bloklamaması için ufak bir bekleme (random 1-2 sn)
-            await new Promise(r => setTimeout(r, 1000 + Math.random() * 1000)); 
+            // Ekşisözlük bloklamaması için ufak bir bekleme (random 2-4 sn)
+            await new Promise(r => setTimeout(r, 2000 + Math.random() * 2000)); 
         }
 
         console.log(`Toplam ${allTopics.length} adet başlık bulundu. Entry sayısına göre sıralanıyor...`);
