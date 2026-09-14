@@ -20,6 +20,8 @@
     "express": "^4.19.2",
     "pg": "^8.16.2",
     "puppeteer": "^24.10.2",
-    "puppeteer-core": "^24.11.1"
+    "puppeteer-core": "^24.11.1",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
   }
 }

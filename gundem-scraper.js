@@ -60,10 +60,16 @@ const runGundemScraper = async () => {
     let launchOptions;
 
     // Ortama göre puppeteer seçimi (Mevcut scraper-logic.js yapısına benzer)
+    const { addExtra } = require('puppeteer-extra');
+    const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+    
     if (isProduction) {
         console.log("Canlı ortam (production) algılandı. @sparticuz/chromium kullanılıyor.");
         const chromium = (await import('@sparticuz/chromium')).default;
-        puppeteer = (await import('puppeteer-core')).default;
+        const puppeteerCore = (await import('puppeteer-core')).default;
+        
+        puppeteer = addExtra(puppeteerCore);
+        puppeteer.use(StealthPlugin());
         
         launchOptions = {
             args: chromium.args,
@@ -73,7 +79,10 @@ const runGundemScraper = async () => {
         };
     } else {
         console.log("Lokal ortam (development) algılandı. Standart puppeteer kullanılıyor.");
-        puppeteer = require('puppeteer');
+        const puppeteerStandard = require('puppeteer');
+        
+        puppeteer = addExtra(puppeteerStandard);
+        puppeteer.use(StealthPlugin());
         
         launchOptions = {
             headless: !isDebugMode, 

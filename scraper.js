@@ -55,19 +55,44 @@ const sendPushNotification = async (pool, title, body) => {
 const runScrapeProcess = async () => {
     // Bu betik doğrudan GitHub Actions'da çalışacağı için
     // her zaman 'production' ortamındadır.
-    const isProduction = true; 
+    const isProduction = process.env.NODE_ENV === 'production' || process.env.GITHUB_ACTIONS === 'true';
+    const isDebugMode = process.env.DEBUG_MODE === 'true';
     
     // Gerekli kütüphaneleri dinamik olarak import et
     const { Pool } = require('pg');
-    const chromium = (await import('@sparticuz/chromium')).default;
-    const puppeteer = (await import('puppeteer-core')).default;
+    
+    const { addExtra } = require('puppeteer-extra');
+    const StealthPlugin = require('puppeteer-extra-plugin-stealth');
+    
+    let puppeteer;
+    let launchOptions;
 
-    const launchOptions = {
+    if (isProduction) {
+        console.log("Canlı ortam (production) algılandı. @sparticuz/chromium kullanılıyor.");
+        const chromium = (await import('@sparticuz/chromium')).default;
+        const puppeteerCore = (await import('puppeteer-core')).default;
+        
+        puppeteer = addExtra(puppeteerCore);
+        puppeteer.use(StealthPlugin());
+        
+        launchOptions = {
             args: chromium.args,
             defaultViewport: chromium.defaultViewport,
             executablePath: await chromium.executablePath(),
             headless: chromium.headless,
-    };
+        };
+    } else {
+        console.log("Lokal ortam (development) algılandı. Standart puppeteer kullanılıyor.");
+        const puppeteerStandard = require('puppeteer');
+        
+        puppeteer = addExtra(puppeteerStandard);
+        puppeteer.use(StealthPlugin());
+        
+        launchOptions = {
+            headless: !isDebugMode, 
+        };
+        if(isDebugMode) console.log("DEBUG MODU AKTİF: Tarayıcı görünür olacak.");
+    }
 
     console.log(`GitHub Actions üzerinde kazıma işlemi başlıyor...`);
     const today = new Date().toISOString().split('T')[0];
@@ -112,7 +137,9 @@ const runScrapeProcess = async () => {
                 await page.setViewport({ width: 1920, height: 1080 });
                 await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.0 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
 
-                await page.goto('https://eksisozluk.com/debe', { waitUntil: 'networkidle2', timeout: 120000 });
+                await page.goto('https://eksisozluk.com/debe', { waitUntil: 'domcontentloaded', timeout: 60000 });
+                // Cloudflare vb. kalkanların geçmesini garantiye almak için liste gelene kadar bekle
+                await page.waitForSelector('ul.topic-list li a', { timeout: 30000 });
                 const entryLinks = await page.evaluate(() =>
                     Array.from(document.querySelectorAll('ul.topic-list li a')).map((el, index) => ({
                         title: el.innerText.trim(),
