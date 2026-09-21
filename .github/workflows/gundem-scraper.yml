@@ -4,7 +4,7 @@ on:
   workflow_dispatch: # Manuel olarak tetikleme izni
   schedule:
     # Her gün doğrudan Türkiye saatiyle (Europe/Istanbul) 23:50'de çalışır.
-    - cron: '30 23 * * *'
+    - cron: '30 22 * * *'
       timezone: 'Europe/Istanbul'
 
 jobs:
