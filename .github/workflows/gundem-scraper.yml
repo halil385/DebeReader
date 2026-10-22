@@ -4,7 +4,7 @@ on:
   workflow_dispatch: # Manuel olarak tetikleme izni
   schedule:
     # Her gün doğrudan Türkiye saatiyle (Europe/Istanbul) 23:50'de çalışır.
-    - cron: '50 23 * * *'
+    - cron: '50 20 * * *'
       timezone: 'Europe/Istanbul'
 
 jobs:
@@ -16,12 +16,12 @@ jobs:
 
     steps:
       - name: Kodu Kopyala
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       - name: Node.js Kurulumu
-        uses: actions/setup-node@v3
+        uses: actions/setup-node@v4
         with:
-          node-version: '18'
+          node-version: '22'
 
       - name: Bağımlılıkları Yükle
         run: npm install
