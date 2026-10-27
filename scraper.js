@@ -67,17 +67,36 @@ const runScrapeProcess = async () => {
     let puppeteer;
     let launchOptions;
 
-    console.log("Standart Puppeteer ve Stealth kalkanı başlatılıyor...");
+    console.log("Ultra-Hafif (Low-RAM) Puppeteer ve Stealth kalkanı başlatılıyor...");
+    const fs = require('fs');
+    let systemChromiumPath = undefined;
+    for (const p of ['/usr/bin/chromium', '/usr/bin/chromium-browser', '/snap/bin/chromium']) {
+        if (fs.existsSync(p)) {
+            systemChromiumPath = p;
+            console.log("Yerel ARM64 Chromium bulundu:", p);
+            break;
+        }
+    }
+
     const puppeteerStandard = require('puppeteer');
     puppeteer = addExtra(puppeteerStandard);
     puppeteer.use(StealthPlugin());
     
     launchOptions = {
         headless: !isDebugMode,
+        executablePath: systemChromiumPath,
         args: [
             '--no-sandbox',
             '--disable-setuid-sandbox',
             '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-software-rasterizer',
+            '--mute-audio',
+            '--disable-extensions',
+            '--disable-background-networking',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--js-flags=--max-old-space-size=256',
             '--disable-blink-features=AutomationControlled'
         ]
     };
@@ -123,6 +142,16 @@ const runScrapeProcess = async () => {
                 browser = await puppeteer.launch(launchOptions);
                 const page = await browser.newPage();
                 
+                // Ultra-Hafif Mod: Resim, font ve medyayı engelleyerek RAM'i 100MB altında tut
+                await page.setRequestInterception(true);
+                page.on('request', (req) => {
+                    if (['image', 'font', 'media'].includes(req.resourceType())) {
+                        req.abort();
+                    } else {
+                        req.continue();
+                    }
+                });
+
                 await page.setViewport({ width: 1920, height: 1080 });
                 await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
 
@@ -187,6 +216,16 @@ const runScrapeProcess = async () => {
             try {
                 browser = await puppeteer.launch(launchOptions);
                 const page = await browser.newPage();
+
+                // Ultra-Hafif Mod: Resim, font ve medyayı engelleyerek RAM'i 100MB altında tut
+                await page.setRequestInterception(true);
+                page.on('request', (req) => {
+                    if (['image', 'font', 'media'].includes(req.resourceType())) {
+                        req.abort();
+                    } else {
+                        req.continue();
+                    }
+                });
 
                 await page.setViewport({ width: 1920, height: 1080 });
                 await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');

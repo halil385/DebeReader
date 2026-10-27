@@ -24,7 +24,9 @@ jobs:
           node-version: '22'
 
       - name: Bağımlılıkları Yükle
-        run: npm install
+        run: |
+          npm install
+          node node_modules/puppeteer/install.mjs
 
       - name: Gündem Kazıma İşlemini Başlat
         env:
