@@ -76,7 +76,12 @@ const runScrapeProcess = async () => {
         puppeteer.use(StealthPlugin());
         
         launchOptions = {
-            args: chromium.args,
+            args: [
+                ...chromium.args,
+                '--disable-blink-features=AutomationControlled',
+                '--no-sandbox',
+                '--disable-setuid-sandbox'
+            ],
             defaultViewport: chromium.defaultViewport,
             executablePath: await chromium.executablePath(),
             headless: chromium.headless,
@@ -89,7 +94,12 @@ const runScrapeProcess = async () => {
         puppeteer.use(StealthPlugin());
         
         launchOptions = {
-            headless: !isDebugMode, 
+            headless: !isDebugMode,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-blink-features=AutomationControlled'
+            ]
         };
         if(isDebugMode) console.log("DEBUG MODU AKTİF: Tarayıcı görünür olacak.");
     }
@@ -135,11 +145,16 @@ const runScrapeProcess = async () => {
                 const page = await browser.newPage();
                 
                 await page.setViewport({ width: 1920, height: 1080 });
-                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.0 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
+                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
 
                 await page.goto('https://eksisozluk.com/debe', { waitUntil: 'domcontentloaded', timeout: 60000 });
                 // Cloudflare vb. kalkanların geçmesini garantiye almak için liste gelene kadar bekle
-                await page.waitForSelector('ul.topic-list li a', { timeout: 30000 });
+                try {
+                    await page.waitForSelector('ul.topic-list li a', { timeout: 30000 });
+                } catch (selError) {
+                    const currentTitle = await page.title().catch(() => 'Bilinmiyor');
+                    throw new Error(`Liste elemanları ('ul.topic-list li a') yüklenemedi. Sayfa Başlığı: "${currentTitle}". Hata: ${selError.message}`);
+                }
                 const entryLinks = await page.evaluate(() =>
                     Array.from(document.querySelectorAll('ul.topic-list li a')).map((el, index) => ({
                         title: el.innerText.trim(),
@@ -195,7 +210,7 @@ const runScrapeProcess = async () => {
                 const page = await browser.newPage();
 
                 await page.setViewport({ width: 1920, height: 1080 });
-                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/5.0 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
+                await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36');
 
                 for (const entry of entriesToProcess) {
                      console.log(`- İçerik çekiliyor: ${entry.title}`);
@@ -210,15 +225,24 @@ const runScrapeProcess = async () => {
                      }
                 }
             } finally {
-                if (browser) await browser.close();
+                try {
+                    if (browser) await browser.close();
+                } catch (bErr) {
+                    console.error("Tarayıcı kapatılırken hata:", bErr.message);
+                }
                 console.log("Döngü tamamlandı, tarayıcı kapatıldı.");
             }
         }
     } catch (error) {
         console.error("Akıllı kazıma işlemi sırasında genel bir hata oluştu:", error);
     } finally {
-        await pool.end();
+        try {
+            await pool.end();
+        } catch (pErr) {
+            console.error("Veritabanı bağlantısı sonlandırılırken hata:", pErr.message);
+        }
         console.log("Akıllı kazıma işlemi ve veritabanı bağlantısı sonlandırıldı.");
+        process.exit(0);
     }
 };
 

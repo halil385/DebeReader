@@ -72,7 +72,12 @@ const runGundemScraper = async () => {
         puppeteer.use(StealthPlugin());
         
         launchOptions = {
-            args: chromium.args,
+            args: [
+                ...chromium.args,
+                '--disable-blink-features=AutomationControlled',
+                '--no-sandbox',
+                '--disable-setuid-sandbox'
+            ],
             defaultViewport: chromium.defaultViewport,
             executablePath: await chromium.executablePath(),
             headless: chromium.headless,
@@ -85,7 +90,12 @@ const runGundemScraper = async () => {
         puppeteer.use(StealthPlugin());
         
         launchOptions = {
-            headless: !isDebugMode, 
+            headless: !isDebugMode,
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-blink-features=AutomationControlled'
+            ]
         };
         if(isDebugMode) console.log("DEBUG MODU AKTİF: Tarayıcı görünür olacak.");
     }
@@ -119,7 +129,15 @@ const runGundemScraper = async () => {
         for (let p = 1; p <= 3; p++) {
             console.log(`Gündem Sayfa ${p} taranıyor...`);
             const url = `https://eksisozluk.com/basliklar/gundem?p=${p}`;
-            await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+            try {
+                await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 60000 });
+                // Cloudflare kalkanı varsa aşılması veya sayfa yüklenmesi için liste gelene kadar bekle
+                await page.waitForSelector('ul.topic-list li a', { timeout: 20000 });
+            } catch (navError) {
+                const currentTitle = await page.title().catch(() => 'Bilinmiyor');
+                console.warn(`   -> Uyarı: Sayfa ${p} yüklenirken liste bulunamadı veya Cloudflare engeli oluştu. Sayfa Başlığı: "${currentTitle}". Hata: ${navError.message}`);
+                continue;
+            }
             
             // Başlıkları ve entry sayılarını çek
             const topicsOnPage = await page.evaluate(() => {
@@ -269,9 +287,18 @@ const runGundemScraper = async () => {
     } catch (error) {
         console.error("Gündem scraper sırasında genel bir hata oluştu:", error);
     } finally {
-        await browser.close();
-        await pool.end();
+        try {
+            if (browser) await browser.close();
+        } catch (bErr) {
+            console.error("Tarayıcı kapatılırken hata:", bErr.message);
+        }
+        try {
+            await pool.end();
+        } catch (pErr) {
+            console.error("Veritabanı havuzu kapatılırken hata:", pErr.message);
+        }
         console.log("Tarayıcı ve veritabanı bağlantısı kapatıldı. İşlem sonlandı.");
+        process.exit(0);
     }
 };
 
