@@ -10,7 +10,7 @@ on:
 
 jobs:
   scrape:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     
     # Görevin en fazla 1 saat sürmesine izin ver.
     timeout-minutes: 30 
