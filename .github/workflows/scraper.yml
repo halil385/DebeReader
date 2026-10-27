@@ -25,9 +25,7 @@ jobs:
           node-version: '22'
 
       - name: Bağımlılıkları Yükle
-        run: |
-          npm install
-          npx puppeteer browsers install chrome
+        run: npm install
 
       - name: Kazıma İşlemini Başlat
         env:
