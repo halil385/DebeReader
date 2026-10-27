@@ -67,42 +67,21 @@ const runScrapeProcess = async () => {
     let puppeteer;
     let launchOptions;
 
-    if (isProduction) {
-        console.log("Canlı ortam (production) algılandı. @sparticuz/chromium kullanılıyor.");
-        const chromium = (await import('@sparticuz/chromium')).default;
-        const puppeteerCore = (await import('puppeteer-core')).default;
-        
-        puppeteer = addExtra(puppeteerCore);
-        puppeteer.use(StealthPlugin());
-        
-        launchOptions = {
-            args: [
-                ...chromium.args,
-                '--disable-blink-features=AutomationControlled',
-                '--no-sandbox',
-                '--disable-setuid-sandbox'
-            ],
-            defaultViewport: chromium.defaultViewport,
-            executablePath: await chromium.executablePath(),
-            headless: chromium.headless,
-        };
-    } else {
-        console.log("Lokal ortam (development) algılandı. Standart puppeteer kullanılıyor.");
-        const puppeteerStandard = require('puppeteer');
-        
-        puppeteer = addExtra(puppeteerStandard);
-        puppeteer.use(StealthPlugin());
-        
-        launchOptions = {
-            headless: !isDebugMode,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-blink-features=AutomationControlled'
-            ]
-        };
-        if(isDebugMode) console.log("DEBUG MODU AKTİF: Tarayıcı görünür olacak.");
-    }
+    console.log("Standart Puppeteer ve Stealth kalkanı başlatılıyor...");
+    const puppeteerStandard = require('puppeteer');
+    puppeteer = addExtra(puppeteerStandard);
+    puppeteer.use(StealthPlugin());
+    
+    launchOptions = {
+        headless: !isDebugMode,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-blink-features=AutomationControlled'
+        ]
+    };
+    if (isDebugMode) console.log("DEBUG MODU AKTİF: Tarayıcı görünür olacak.");
 
     console.log(`GitHub Actions üzerinde kazıma işlemi başlıyor...`);
     const today = new Date().toISOString().split('T')[0];

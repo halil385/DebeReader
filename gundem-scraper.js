@@ -63,42 +63,21 @@ const runGundemScraper = async () => {
     const { addExtra } = require('puppeteer-extra');
     const StealthPlugin = require('puppeteer-extra-plugin-stealth');
     
-    if (isProduction) {
-        console.log("Canlı ortam (production) algılandı. @sparticuz/chromium kullanılıyor.");
-        const chromium = (await import('@sparticuz/chromium')).default;
-        const puppeteerCore = (await import('puppeteer-core')).default;
-        
-        puppeteer = addExtra(puppeteerCore);
-        puppeteer.use(StealthPlugin());
-        
-        launchOptions = {
-            args: [
-                ...chromium.args,
-                '--disable-blink-features=AutomationControlled',
-                '--no-sandbox',
-                '--disable-setuid-sandbox'
-            ],
-            defaultViewport: chromium.defaultViewport,
-            executablePath: await chromium.executablePath(),
-            headless: chromium.headless,
-        };
-    } else {
-        console.log("Lokal ortam (development) algılandı. Standart puppeteer kullanılıyor.");
-        const puppeteerStandard = require('puppeteer');
-        
-        puppeteer = addExtra(puppeteerStandard);
-        puppeteer.use(StealthPlugin());
-        
-        launchOptions = {
-            headless: !isDebugMode,
-            args: [
-                '--no-sandbox',
-                '--disable-setuid-sandbox',
-                '--disable-blink-features=AutomationControlled'
-            ]
-        };
-        if(isDebugMode) console.log("DEBUG MODU AKTİF: Tarayıcı görünür olacak.");
-    }
+    console.log("Standart Puppeteer ve Stealth kalkanı başlatılıyor...");
+    const puppeteerStandard = require('puppeteer');
+    puppeteer = addExtra(puppeteerStandard);
+    puppeteer.use(StealthPlugin());
+    
+    launchOptions = {
+        headless: !isDebugMode,
+        args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-blink-features=AutomationControlled'
+        ]
+    };
+    if (isDebugMode) console.log("DEBUG MODU AKTİF: Tarayıcı görünür olacak.");
 
     const browser = await puppeteer.launch(launchOptions);
     const page = await browser.newPage();
